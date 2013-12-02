@@ -5,4 +5,4 @@ build=$(git rev-parse --short HEAD)
 
 # check out what this bench's device name is
 echo '{"device":"'$DEVICE'", "ip":"'$ip'"}'
-curl -H 'Content-Type: application/json' -d '{"name":"'$DEVICE'", "ip":"'$ip'", "gateway":"'$gateway'", "build": "'$build'"}' testlator.herokuapp.com/bench
+curl -H 'Content-Type: application/json' -d '{"name":"'$DEVICE'", "ip":"'$ip'", "gateway":"'$gateway'", "build": "'$build'"}' testalator.herokuapp.com/bench
