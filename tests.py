@@ -43,6 +43,8 @@ def gpioTest(state):
     print "setting up", pin
     GPIO.setup(tessel["A"][pin], GPIO.OUT)
     GPIO.output(tessel["A"][pin], GPIO.HIGH)
-    
+
   GPIO.cleanup()
   return
+
+gpioTest()
