@@ -24,7 +24,6 @@ var PIN_TEST = 0x11,
 var i2c = new ports['A'].I2C(addr);
 i2c.initialize();
 
-
 function pinTest(next){
   console.log("===== pin test =====");
   var passing = 0;
@@ -61,44 +60,49 @@ function pinTest(next){
   });
 }
 
-
-function sckTest(next){
-  console.log("===== sck test =====");
-  var spi = ports['A'].SPI({clockSpeed:100});
-  // sending that we're going to do an sck test and we have 5 pins to test
-  i2c.transfer([SCK_TEST], 1, function(err, data) {
-    console.log("sent sck test cmd", SCK_TEST, " got response", data);
-    // look through all the gpios
-    var numDone = 0;
-    // Object.keys(ports).forEach(function(port, index){
-      // tell the slave which port we're testing
-      var port = 'A';
-      console.log("port ", port.charCodeAt(0));
-      i2c.send([SCK_PORT, port.charCodeAt(0)], function(port_err) {
-        
-        // send anything over spi to test the clk pin
-        spi.transfer([0xAA], function(spi_err, spi_data){
-          // read back how many ports the slave read
-          i2c.transfer([SCK_READ], 2, function(read_err, read_data){
-            console.log("got sck read data", read_data);
-            // make sure clock went 8 cycles
-            if (read_data[1] != 16){
-              console.log("FAIL: sck did not hit 8");
-            } else {
-              console.log("PASS: sck on port ", port, read_data[1]);
-            }
-
-            if (numDone >= 5) {
-              console.log("===== sck test: DONE =====");
-              next && next();
-            }
-            numDone = numDone + 1;
-          });
-        });
+function individualSckTest(spi, port, next) {
+  i2c.send([SCK_PORT, port], function(port_err) {
+    
+    // send anything over spi to test the clk pin
+    spi.transfer([0xAA], function(spi_err, spi_data){
+      // read back how many ports the slave read
+      i2c.transfer([SCK_READ], 2, function(read_err, read_data){
+        console.log("got sck read data", read_data);
+        // make sure clock went 8 cycles
+        if (read_data[1] != 16){
+          console.log("FAIL: sck did not hit 8");
+        } else {
+          console.log("PASS: sck on port ", port, read_data[1]);
+        }
+        next && next();
       });
-    // });
+    });
   });
 }
+
+function sckTest(next) {
+  console.log("===== sck test =====");
+  var sckPorts = Object.keys(ports);
+  var spi = ports['A'].SPI({clockSpeed:100});
+  var count = 0;
+  i2c.transfer([SCK_TEST], 1, function(err, data) {
+    console.log("sent sck test cmd", SCK_TEST, " got response", data);
+    function iterate() {
+      individualSckTest(spi, sckPorts[count].charCodeAt(0), function(){
+        if (count >= sckPorts.length){
+          console.log("===== sck test: DONE =====");
+          next();
+        } else {
+          count += 1;
+          iterate();
+        }
+      });
+    }
+
+    iterate();
+  });
+}
+
 
 function adcTest(next){
   console.log("===== adc test =====");
@@ -142,6 +146,7 @@ function dacTest(next){
 }
 
 console.log("executing tests");
+
 // pinTest();
 // sckTest();
 // adcTest();
