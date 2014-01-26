@@ -1,5 +1,6 @@
 #!/bin/sh
 # on startup always ping testalator web
+. $HOME/.bashrc
 cd ~/testalator-device
 ip=$(/sbin/ifconfig | awk -F':' '/inet addr/&&!/127.0.0.1/{split($2,_," ");print _[1]}')
 gateway=$(/sbin/ip route | awk '/default/ { print $3 }')
