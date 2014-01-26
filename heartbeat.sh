@@ -1,3 +1,4 @@
+#!/bin/sh
 # on startup always ping testalator web
 cd ~/testalator-device
 ip=$(/sbin/ifconfig | awk -F':' '/inet addr/&&!/127.0.0.1/{split($2,_," ");print _[1]}')
