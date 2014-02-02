@@ -50,6 +50,9 @@ function pinTest(next){
             passing = passing + 1;
           }
           if (numDone >= 17) {
+            if (passing >= 17) {
+              console.log("Passed Pin Test");
+            }
             console.log("===== pin test: DONE ", passing, "passing ", failing, " failing =====");
             next && next();
           } 
@@ -61,6 +64,7 @@ function pinTest(next){
 }
 
 function individualSckTest(spi, port, next) {
+  var passing = false;
   i2c.send([SCK_PORT, port], function(port_err) {
     
     // send anything over spi to test the clk pin
@@ -73,8 +77,9 @@ function individualSckTest(spi, port, next) {
           console.log("FAIL: sck did not hit 8");
         } else {
           console.log("PASS: sck on port ", port, read_data[1]);
+          passing = true;
         }
-        next && next();
+        next && next(passing);
       });
     });
   });
@@ -85,11 +90,18 @@ function sckTest(next) {
   var sckPorts = Object.keys(ports);
   var spi = ports['A'].SPI({clockSpeed:100});
   var count = 0;
+  var passed = 0;
   i2c.transfer([SCK_TEST], 1, function(err, data) {
     console.log("sent sck test cmd", SCK_TEST, " got response", data);
     function iterate() {
-      individualSckTest(spi, sckPorts[count].charCodeAt(0), function(){
+      individualSckTest(spi, sckPorts[count].charCodeAt(0), function(passing){
+        if (passing){
+          passed += 1
+        }
         if (count >= sckPorts.length){
+          if (passed >= 4){
+            console.log("Passed SCK test");
+          }
           console.log("===== sck test: DONE =====");
           next();
         } else {
@@ -106,7 +118,7 @@ function sckTest(next) {
 
 function adcTest(next){
   console.log("===== adc test =====");
-
+  var passed = 0;
   i2c.transfer([ADC_TEST], 1, function(err, data) {
     console.log("sent adc test cmd", ADC_TEST, " got response ", data);
     for (var i = 1; i < 7; i++) {
@@ -116,7 +128,11 @@ function adcTest(next){
         console.log("FAIL: value of analog pin ", i, " is wrong: ", val);
       } else {
         console.log("PASS: analog pin ", i, val);
+        passed += 1;
       }
+    }
+    if (passed >= 6) {
+      console.log("Passed ADC test");
     }
     console.log("===== adc test: DONE =====");
     next && next();
@@ -126,7 +142,7 @@ function adcTest(next){
 function dacTest(next){
   console.log("===== dac test =====");
   ports['G'].analog(4).write(512);
-
+  var passed = 0;
   i2c.transfer([DAC_TEST], 1, function(err, data) {
     console.log("sent dac test cmd", DAC_TEST, " got response ", data);
     i2c.transfer([DAC_READ], 4, function(read_err, read_data){
@@ -138,6 +154,10 @@ function dacTest(next){
         console.log("FAIL: dac might be sending the wrong value. got this ", dac_data);
       } else {
         console.log("PASS: dac passed", dac_data);
+        passed += 1;
+      }
+      if (passed >= 1){
+        console.log("Passed DAC test");
       }
       console.log("===== dac test: DONE =====");
       next && next();
