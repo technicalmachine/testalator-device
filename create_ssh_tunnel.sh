@@ -2,7 +2,7 @@
 createTunnel() {
   ip=$(awk -F"=" '/ip/{print $2}' device)
   port=$(awk -F"=" '/port/{print $2}' device)
-  /usr/bin/ssh -N -R $port:localhost:22 root@ip
+  /usr/bin/ssh -N -R $port:localhost:22 root@$ip
   if [[ $? -eq 0 ]]; then
     echo Tunnel to jumpbox created successfully
   else
