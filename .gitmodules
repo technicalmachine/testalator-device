@@ -1,0 +1,3 @@
+[submodule "deps/cli"]
+	path = deps/cli
+	url = git@github.com:tessel/cli.git
