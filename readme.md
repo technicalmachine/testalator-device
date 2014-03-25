@@ -8,43 +8,41 @@ test bench for Tessel
 
 ### install node
 
-### set up the device name
 ```
-vi /etc/environment
+sudo apt-get upgrade; 
+sudo apt-get update;
+wget http://nodejs.org/dist/v0.10.2/node-v0.10.2-linux-arm-pi.tar.gz;
+tar -xvzf node-v0.10.2-linux-arm-pi.tar.gz;
+node-v0.10.2-linux-arm-pi/bin/node --version;
+npm install -g node-gyp;
 ```
 
-add a line `DEVICE="<device name>"`
+add it to the path
+
+```
+NODE_JS_HOME=/home/pi/node-v0.10.2-linux-arm-pi 
+PATH=$PATH:$NODE_JS_HOME/bin
+```
+
+### set up the device name
+
+```
+touch device
+```
+
+Make sure device has something like 
+
+```
+device=<device name>
+ip=162.243.26.105
+port=<reverse ssh  tunnel port>
+```
 
 ### install tessel stuff
 
-```curl http://tessel.io/install/linux.sh | sudo sh```
+```curl http://tessel.io/install.sh | sudo sh```
 
 ### set up cronjob
 crontab -e
 */1 * * * * root ~/testalator-device/heartbeat.sh > heartbeat.log 2>&1
-
-
-### change the path of the npm install
-
-make a file in home called `.npmrc`
-`PREFIX=/home/pi/.npm-packages`
-
-* device detected
-* loaded first stage
-* loaded code
-* tessel booted
-* wifi firmware updated
-
-* test gpios
-* test adcs
-* test spi
-* test i2c
-* test uart
-* ram spot check
-* js code upload
-* wifi connecting
-* wifi code upload
-
-* loaded first stage
-* loaded final code
-* done
+*/1 * * * * root ~/testalator-device/create_ssh_tunnel.sh > ssh_tunnel.log 2>&1
