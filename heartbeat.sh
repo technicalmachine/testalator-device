@@ -10,5 +10,5 @@ gateway=$(/sbin/ip route | awk '/default/ { print $3 }')
 build=$(git rev-parse HEAD)
 
 # check out what this bench's device name is
-echo '{"device":"'$device'", "ip":"'$ip'", "build":"'$build'", "gateway":"'$gateway'"}'
-curl -H 'Content-Type: application/json' -d '{"name":"'$device'", "ip":"'$ip'", "gateway":"'$gateway'", "build": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}' testalator.herokuapp.com/bench
+echo '{"name":"'$device'", "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}'
+curl -H 'Content-Type: application/json' -d '{"name":"'$device'", "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}' testalator.herokuapp.com/bench
