@@ -1,5 +1,5 @@
 // uses the https://github.com/rakeshpai/pi-gpio lib
-// var gpio = require("pi-gpio");
+var gpio = require("pi-gpio");
 var sys = require('sys'),
   exec = require('child_process').exec,
   async = require("async"),
@@ -51,17 +51,18 @@ var network = "GreentownGuest",
 function run(){
   console.log("running");
   async.waterfall([
-    function (cb) { setup(cb) },
-    function (cb) { emc(1, cb) },
-    function (cb) { rst(cb) },
-    function (cb) { usbCheck(NXP_ROM_VID, NXP_ROM_PID, cb) },
-    function (cb) { ram(otpPath, cb) },
-    function (cb) { emc(0, cb) },
-    function (cb) { rst(cb) },
-    function (cb) { ram(wifiPatchPath, cb)}
-    function (cb) { wifiPatchCheck(cb) },
-    function (cb) { firmware(firmwarePath, cb) },
-    function (cb) { jsCheck(jsPath, cb) },
+    // function (cb) { setup(cb) },
+    // function (cb) { emc(1, cb) },
+    // function (cb) { rst(cb) },
+    // function (cb) { usbCheck(NXP_ROM_VID, NXP_ROM_PID, cb) },
+    // function (cb) { ram(otpPath, cb) },
+    // function (cb) { emc(0, cb) },
+    // function (cb) { rst(cb) },
+    // function (cb) { usbCheck(TESSEL_VID, TESSEL_PID, cb) },
+    // function (cb) { ram(wifiPatchPath, cb)}
+    // function (cb) { wifiPatchCheck(cb) },
+    // function (cb) { firmware(firmwarePath, cb) },
+    // function (cb) { jsCheck(jsPath, cb) },
     function (cb) { wifiTest(network, pw, auth, cb)}
   ], function (err, result){
     console.log("res called");
@@ -77,39 +78,50 @@ function run(){
 
 function wifiTest(ssid, pw, security, callback){
   console.log("wifi test");
-  var client = tesselClient.connect(6540, 'localhost');
-  var maxCount = 5;
-  var count = 0;
-  // tessel wifi connect
-  var retry = function() {
-    client.configureWifi(ssid, pw, security, {
-      timeout: 8
-    }, function (err, data) {
-      console.log(data);
-      if (err) {
-        console.error('Retrying...');
-        count++;
-        if (count > maxCount) {
-          callback("wifi did not connect")
-        }
-        else {
-          console.log("call reset forever");
-          setImmediate(retry);
-        }
-      } else {
-        // ping that ip to check
-        exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
-          if (!error){
-            callback(null);
+
+  tesselClient.selectModem(function notfound () {
+    console.error("No tessels found");
+  }, function found (err, modem) {
+    tesselClient.connectServer(modem, function () {
+
+      var client = tesselClient.connect(6540, 'localhost');
+
+      var maxCount = 5;
+      var count = 0;
+      // tessel wifi connect
+      var retry = function() {
+
+        client.configureWifi(ssid, pw, security, {
+          timeout: 8
+        }, function (err, data) {
+          console.log(data);
+          if (err) {
+            console.error('Retrying...');
+            count++;
+            if (count > maxCount) {
+              callback("wifi did not connect")
+            }
+            else {
+              console.log("call reset forever");
+              setImmediate(retry);
+            }
           } else {
-            callback(error);
+            // ping that ip to check
+            exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
+              if (!error){
+                callback(null);
+              } else {
+                callback(error);
+              }
+            });
           }
         });
       }
-    });
-  }
 
-  retry();
+      retry();
+
+    });
+  });
 }
 
 function bundle (arg)
@@ -288,123 +300,153 @@ function firmware(path, callback){
 }
 
 function ram(path, callback){
+  console.log("path", path);
   dfu.runRam(fs.readFileSync(path), function(){
     callback(null);
   });
 }
 
 function usbCheck(vid, pid, callback){
-  if (usb.findByIds(vid, pid)){
-    callback(null);
+  setTimeout(function(){
+    console.log("checking usb for ", vid, pid);
+    if (usb.findByIds(vid, pid)){
+      callback(null);
+    } else {
+      callback("Error cannot find vid/pid: " + vid + " " + pid, "usb check");
+    }
+  }, 1000);
+}
+
+function rst(callback){
+  // close it?
+  gpio.close(reset, function (err){
+    gpio.open(reset, "output", function(err){
+      gpio.write(reset, 0, function(err) {
+        // wait a bit
+        setTimeout(function() {
+          gpio.write(reset, 1, function(err) {
+            callback(err);
+          });
+        }, 100);
+      });
+    });
+  });
+  
+}
+
+function closeAll(callback){
+  var funcArray = [];
+  [A0, A6, A8, A7, button, reset, ledFirmware, 
+  ledJS, ledPins, ledWifi, ledDone, ledError, busy, 
+  powerCycle, config, resetBottom].forEach(function(element){
+    funcArray.push(function(cb){
+      gpio.close(element, function(err){
+        cb(err);
+      })
+    });
+  })
+
+  async.parallel(funcArray, function (err, res){
+    if (err){
+      console.log("couldn't close pin", err);
+      callback(err);
+    } else{
+      callback(null);
+    }
+  });
+}
+
+function setup(callback){
+  // var pinArr = ;
+  // // unexport everything
+  // pinArr.forEach(function (pin){
+  //   console.log("pin", pin);
+  //   gpio.close(pin);
+  // });
+
+  var funcArray = [];
+  [reset, ledFirmware, ledJS, ledPins, 
+  ledWifi, ledDone, ledError, busy].forEach(function(element){
+    funcArray.push(function(cb){
+      gpio.open(element, "output", function(err){
+        // gpio.close(element);
+        cb(err);
+      });
+    });
+  });
+
+  closeAll(function(err){
+    async.parallel(funcArray, function (err, results){
+      if (err){
+        console.log("couldn't setup pin", err);
+        callback(err);
+      }
+
+      // wait until a button is pressed.
+      gpio.open(button, "input", function (err){
+        var intervalId = setInterval(function(){
+          gpio.read(button, function(err, value){
+            if (value == 1 ) {
+              clearInterval(intervalId);
+              callback(err);
+            }
+          });
+        }, 20);
+      });
+    });
+  });
+}
+
+function emc(enable, callback){
+  var maxNum = 4, 
+    count = 0,
+    totalErr = null,
+    pinArray = {};
+
+  pinArray[A0] = 0;
+  pinArray[A6] = 1;
+  pinArray[A7] = 0;
+  pinArray[A8] = 1;
+
+  console.log("pin array", pinArray);
+  if (enable){
+    // open up EMC pins and toggle for DFU mode
+    Object.keys(pinArray).forEach(function(pin){
+      console.log("emc", pin);
+      gpio.open(pin, "output", function(err){
+        // TODO: all except one should be low
+        gpio.write(pin, pinArray[pin], function(err) {
+          totalErr = totalErr || err;
+          count++;
+          if (count >= maxNum){
+            callback(err);
+          }
+        });
+      });
+    });
   } else {
-    callback("Error cannot find vid/pid: " + vid + " " + pid, "usb check");
+    // close up all EMC pins
+    Object.keys(pinArray).forEach(function(pin){
+      gpio.close(pin, function (err){
+        gpio.open(pin, "input", function(err) {
+          totalErr = totalErr || err;
+          count++;
+          if (count >= maxNum){
+            callback(err);
+          }
+        });
+      })
+    });
   }
 }
 
-// function rst(execute, callback){
-//   // gpio.open(reset, "output", function(err){
-//     gpio.write(reset, 0, function(err) {
-//       // wait a bit
-//       setTimeout(function() {
-//         gpio.write(reset, 1, function(err) {
-//           callback(err);
-//         });
-//       }, 100);
-//     });
-//   // });
-// }
-
-// function setup(callback){
-//   var funcArray = [];
-//   [reset, ledFirmware, ledJS, ledPins, 
-//   ledWifi, ledDone, ledError, busy].forEach(function(element){
-//     funcArray.push(function(callback){
-//       gpio.open(element, "output", function(err){
-//         callback(err);
-//       });
-//     });
-//   });
-
-//   async.parallel(funcArray, function (err, results){
-//     if (err){
-//       console.log("couldn't setup pin", err);
-//       callback(err);
-//     }
-
-//     // wait until a button is pressed.
-//     gpio.open(button, "input", function (err){
-//       var intervalId = setInterval(function(){
-//         gpio.read(button, function(err, value){
-//           if (value == 1 ) {
-//             clearInterval(intervalId);
-//             callback(err);
-//           }
-//         });
-//       }, 20);
-//     });
-    
-//   });
-// }
-
-// function emc(enable, callback){
-//   var maxNum = 4, 
-//     count = 0,
-//     totalErr = null,
-//     pinArray = [A0, A6, A7, A8];
-
-//   if (enable){
-//     // open up EMC pins and toggle for DFU mode
-//     pinArray.forEach(function(pin){
-//       gpio.open(pin, "output", function(err){
-//         // TODO: all except one should be low
-//         gpio.write(pin, 0, function(err) {
-//           totalErr = totalErr || err;
-//           count++;
-//           if (count >= maxNum){
-//             callback(totalErr, true);
-//           }
-//         });
-//       });
-//     });
-//   } else {
-//     // close up all EMC pins
-//     pinArray.forEach(function(pin){
-//       gpio.open(pin, "input", function(err) {
-//         totalErr = totalErr || err;
-//         count++;
-//         if (count >= maxNum){
-//           callback(totalErr, false);
-//         }
-//       });
-//     });
-//   }
-// }
-
 run();
 
+function exit() {
+  closeAll(function(err){
+    // exit for real
+    process.exit();
+  });
+}
 
-// gpio.open(16, "output", function(err) {     // Open pin 16 for output
-//     gpio.write(16, 0, function() {          // Set pin 16 high (1)
-//         gpio.close(16);                     // Close pin 16
-//     });
-// });
-
-// gpio.open(3, "input", function(err) {
-//   setInterval(function(){
-//     gpio.read(3, function(err, value) {
-//       if (err) console.log("whao, an error reading", err);
-//       console.log("got value", value);
-//     });
-//   }, 300);
-// });
-
-// function exit() {
-//   // unexport all pins
-//   led.unexport();
-//   button.unexport();
-
-//   // exit for real
-//   process.exit();
-// }
-
-// process.on('SIGINT', exit);
+process.on('SIGINT', exit);
