@@ -18,52 +18,61 @@ var PIN_TEST = 0x11,
     ADC_TEST = 0x31,
     DAC_TEST = 0x41,
     DAC_READ = 0x42,
+    I2C_TEST = 0x51,
     OK = 0x0F
     ;
 
 var i2c = new ports['A'].I2C(addr);
-i2c.initialize();
+var i2c_0 = new ports['C'].I2C(addr); // the other i2c port
+
+function checkOk(data){
+  if (data[0] != OK) {
+    console.log("Error: cannot establish comms with Testalator");
+    return false;
+  }
+  return true;
+}
 
 function pinTest(next){
   console.log("===== pin test =====");
   var passing = 0;
   var failing = 0;
-
+  var resString = "PIN TEST: ";
   i2c.transfer(new Buffer([PIN_TEST, 0x00]), 1, function(err, data) {
     // console.log("got data", data);
     // console.log("sent pin test cmd", PIN_TEST, " got response ", data);
-    if (data[0] == OK) {
-    //   // look through all the gpios
-      var numDone = 0;
-      Object.keys(ports).forEach(function(port){
+    if (!checkOk(data)) return;
+    // look through all the gpios
+    var numDone = 0;
+    Object.keys(ports).forEach(function(port){
 
-        // send over the port
-        var max_gpios = 3;
-        if (port == 'G') {
-          max_gpios = 6;
+      // send over the port
+      var max_gpios = 3;
+      if (port == 'G') {
+        max_gpios = 6;
+      }
+      for (var i = 1; i <= max_gpios; i++) {
+        var pin = ports[port].gpio(i).input();
+        if (pin.read() != 0){
+          console.log("FAIL: pin ", pin.pin, " on port ", port, " is not low");
+          resString = resString.concat("x");
+          failing = failing + 1;
+        } else {
+          console.log("PASS: pin ", pin.pin, " on port ", port);
+          resString = resString.concat(".");
+          passing = passing + 1;
         }
-        for (var i = 1; i <= max_gpios; i++) {
-          var pin = ports[port].gpio(i).input();
-          if (pin.read() != 0){
-            console.log("FAIL: pin ", pin.pin, " on port ", port, " is not low");
-            failing = failing + 1;
-          } else {
-            console.log("PASS: pin ", pin.pin, " on port ", port);
-            passing = passing + 1;
+        if (numDone >= 17) {
+          if (passing >= 17) {
+            console.log("Passed Pin Test");
           }
-          if (numDone >= 17) {
-            if (passing >= 17) {
-              console.log("Passed Pin Test");
-            }
-            console.log("===== pin test: DONE ", passing, "passing ", failing, " failing =====");
-            next && next();
-          } 
-          numDone = numDone +1;
-        }
-      });
-    } else {
-      console.log("Error: cannot establish comms with Testalator");
-    }
+          console.log("===== pin test: DONE ", passing, "passing ", failing, " failing =====");
+          next && next(resString, failing);
+        } 
+        numDone = numDone +1;
+      }
+    });
+    
   });
 }
 
@@ -91,21 +100,30 @@ function sckTest(next) {
   var sckPorts = Object.keys(ports);
   var count = 0;
   var passed = 0;
+  var failed = 0;
+  var resString = "SCK TEST: ";
+
   i2c.transfer(new Buffer([SCK_TEST, 5]), 2, function(err, data) {
-    // console.log("sent sck test cmd", SCK_TEST, " got response", data);
+    if (!checkOk(data)) return;
+    
+    console.log("sent sck test cmd", SCK_TEST, " got response", data);
     function iterate() {
       // console.log("count", count, sckPorts[count], sckPorts.length);
       var spi = ports[sckPorts[count]].SPI({clockSpeed:100});
       individualSckTest(spi, sckPorts[count].charCodeAt(0), function(passing){
         if (passing){
+          resString = resString.concat(".");
           passed += 1
+        } else {
+          resString = resString.concat("x");
+          failed += 1;
         }
         if (count >= (sckPorts.length-1)){
           if (passed >= 4){
             console.log("Passed SCK test");
           }
-          console.log("===== sck test: DONE =====");
-          next && next();
+          console.log("===== sck test: DONE ", passed, "passing", failed, " failing =====");
+          next && next(resString, failed);
         } else {
           count += 1;
           iterate();
@@ -121,56 +139,121 @@ function sckTest(next) {
 function adcTest(next){
   console.log("===== adc test =====");
   var passed = 0;
+  var failed = 0;
+  var resString = "ADC TEST: ";
+
   i2c.transfer(new Buffer([ADC_TEST, 0x00]), 1, function(err, data) {
+    if (!checkOk(data)) return;
+    
     console.log("sent adc test cmd", ADC_TEST, " got response ", data);
     for (var i = 1; i < 7; i++) {
       var val = ports['G'].analog(i).read();
       console.log("read ", val, " from analog pin ", i);
-      if (val < 500 || val > 524) {
+      if (val < 450 || val > 600) {
         console.log("FAIL: value of analog pin ", i, " is wrong: ", val);
+        resString = resString.concat("x");
+        failed += 1;
       } else {
         console.log("PASS: analog pin ", i, val);
+        resString = resString.concat(".");
         passed += 1;
       }
     }
     if (passed >= 6) {
       console.log("Passed ADC test");
     }
-    console.log("===== adc test: DONE =====");
-    next && next();
+    console.log("===== adc test: DONE ", passed, "passed", failed, " failed =====");
+    next && next(resString, failed);
   });
 }
 
 function dacTest(next){
   console.log("===== dac test =====");
-  ports['G'].analog(4).write(512);
+  ports['G'].analog(1).write(512);
   var passed = 0;
-  i2c.transfer(new Buffer([DAC_TEST, 0x00]), 1, function(err, data) {
+  var failed = 0;
+  var resString = "DAC TEST: ";
+
+  i2c.transfer(new Buffer([DAC_TEST, 0x00]), 5, function(err, data) {
+    if (!checkOk(data)) return;
+
     console.log("sent dac test cmd", DAC_TEST, " got response ", data);
-    i2c.transfer(new Buffer([DAC_READ, 0x00]), 4, function(read_err, read_data){
- 
-      var dac_data = (read_data[0] << 24) + (read_data[1] << 16) + (read_data[2] << 8) + read_data[3]; 
-      console.log("getting back dac read ", read_data, dac_data);
-      if (dac_data < 500 || dac_data > 524){
-        // we faillled
-        console.log("FAIL: dac might be sending the wrong value. got this ", dac_data);
-      } else {
-        console.log("PASS: dac passed", dac_data);
+    var dac_data = (data[1] << 24) + (data[2] << 16) + (data[3] << 8) + data[4]; 
+    console.log("getting back dac read ", dac_data);
+    if (dac_data < 450 || dac_data > 600){
+      // we faillled
+      console.log("FAIL: dac might be sending the wrong value. got this ", dac_data);
+      resString = resString.concat("x");
+      failed += 1;
+    } else {
+      console.log("PASS: dac passed", dac_data);
+      resString = resString.concat(".");
+      passed += 1;
+    }
+    if (passed >= 1){
+      console.log("Passed DAC test");
+    }
+    console.log("===== dac test: DONE ", passed, "passing", failed, " failing =====");
+    next && next(resString, failed);
+  });
+}
+
+function i2cTest(next){
+  console.log("===== i2c test =====");
+  var passed = 0;
+  var failed = 0;
+  var resString = "I2C TEST: ";
+
+  i2c.transfer(new Buffer([I2C_TEST, 0x00]), 1, function(err, data){
+    if (!checkOk(data)) return;
+
+    i2c.disable();
+    i2c_0.transfer(new Buffer([I2C_TEST, 0x00]), 1, function(err, data){
+      if (data[0] == OK){
+        console.log("PASS: I2C_0");
+        resString = resString.concat(".");
         passed += 1;
+      } else {
+        console.log("FAIL: got this", data, "from I2C_0");
+        resString = resString.concat("x");
+        failed += 1;
       }
-      if (passed >= 1){
-        console.log("Passed DAC test");
-      }
-      console.log("===== dac test: DONE =====");
-      next && next();
+      console.log("===== i2c test: DONE ", passed, "passing", failed, " failed =====");
+      i2c_0.disable();
+      next && next(resString, failed);
     });
   });
 }
 
 console.log("executing tests");
 
+pinTest(function(pinRes, pinFail){
+  sckTest(function(sckRes, sckFail){
+    adcTest(function(adcRes, adcFail){
+      dacTest(function(dacRes, dacFail){
+        i2cTest(function(i2cRes, i2cFail){
+          console.log("======= FINISHED ALL TESTS =======");
+          console.log(pinRes);
+          console.log(sckRes);
+          console.log(adcRes);
+          console.log(dacRes);
+          console.log(i2cRes);
+
+          var total = pinFail + sckFail + adcFail + dacFail + i2cFail;
+          if (!total){
+            console.log("0 FAILURES, ALL PASSED")
+          } else {
+            console.log(total, "FAILURES");
+          }
+        });
+      });
+    });
+  });
+});
+
 // pinTest();
-sckTest();
+// sckTest();
 // adcTest();
 // dacTest();
+// i2cTest();
 
