@@ -37,6 +37,7 @@ var TESSEL_PID = 0x6097;
 var NXP_ROM_VID = 0x1fc9;
 var NXP_ROM_PID = 0x000c;
 
+
 // var otpPath = "./bin/tessel-otp-v3.bin",
 var otpPath = "./bin/tm_otp_v02.bin",
   wifiPatchPath = "./bin/tessel-firmware.bin",
@@ -47,9 +48,23 @@ var network = "GreentownGuest",
   pw = "welcomegtl",
   auth = "wpa2";
 
+var logger;
+
+function setupLogger(){
+  var deviceSettings = require('./parser.js').create('device').process(['device'], function(res){
+    exec('git rev-parse HEAD', function(err, git, stderr){
+      fs.readdir('bin', function(err, files){
+        logger = require('./logger.js').create(res.device, git, files);
+      });
+    });
+  });
+}
 
 function run(){
   console.log("running");
+
+  setupLogger();
+
   async.waterfall([
     // function (cb) { setup(cb) },
     // function (cb) { emc(1, cb) },
