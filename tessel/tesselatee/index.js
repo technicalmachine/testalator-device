@@ -242,8 +242,10 @@ pinTest(function(pinRes, pinFail){
           var total = pinFail + sckFail + adcFail + dacFail + i2cFail;
           if (!total){
             console.log("0 FAILURES, ALL PASSED")
+            console.log("{\"jsTest\": \"passed\"}");
           } else {
             console.log(total, "FAILURES");
+            console.log("{\"jsTest\": \"failed\"}");
           }
         });
       });
