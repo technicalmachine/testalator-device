@@ -55,17 +55,20 @@ Logger.prototype.write = function(level, key, data){
     data = level;
     writeData = "["+this.levels.data+"]: "+data;
   } else {
-    writeData = "["+level+"]: "+ "{\""+key+"\": \""+data+"\"";
+    writeData = "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'";
   }
 
   // var writeData = "["+date+"]"+"["+level+"]"+": "+"{\""+key+"\": \""+data+"\"";
   fs.appendFileSync(this.filename, writeData);
   console.log(writeData);
 
+  var dataString = {"device": this.bench, "data":writeData};
+
   var options = {
     host: 'http://testalator.herokuapp.com/',
-    path: '/'+bench+"/"+this.device+"/logs",
-    method: 'POST'
+    path: '/b/'+bench+"/logs",
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
   };
 
   var req = http.request(options, function(response) {
@@ -79,25 +82,47 @@ Logger.prototype.write = function(level, key, data){
     });
   });
 
-  req.write(writeData);
+  req.write(dataString);
   req.end();
+}
+
+Logger.prototype.clearDevice = function(){
+  this.device = "";
+  this.deviceFirmware = "";
+  this.deviceRuntime = "";
+  this.deviceOtp = "";
+  this.devicePath = "";
 }
 
 Logger.prototype.device = function(data, path) {
   // open up new file in logs/device/device id
 
   // save with initial timestamp
-  this.device = id;
+  this.device = data.serial;
+  this.deviceFirmware = data.firmware;
+  this.deviceRuntime = data.runtime;
+  this.deviceOtp = data.board;
   this.devicePath = "logs/devices/"+this.device;
+  this.deviceBuild = new Date().toISOString();
   // fs.mkdirSync("logs/devices/");
-  fs.appendFileSync(this.devicePath, new Date().toISOString());
+  fs.appendFileSync(this.devicePath, this.deviceBuild);
   this.write(this.levels.newDevice, "device", data.serial);
   this.write(this.levels.newDevice, "firmware", data.firmware);
   this.write(this.levels.newDevice, "runtime", data.runtime);
   this.write(this.levels.newDevice, "otp", data.board);
 }
 
+Logger.prototype._checkDevice = function(){
+  if (this.device == ""){
+    return false;
+  }
+  return true;
+}
+
 Logger.prototype.deviceWrite = function(level, key, data){
+  if (!this._checkDevice) {
+    return console.error("no device id found, cannot log");
+  }
   // write to both log file and device id file
   // [timestamp][level]: data
   var writeData = "["+new Date().toISOString()+"]";
@@ -106,18 +131,19 @@ Logger.prototype.deviceWrite = function(level, key, data){
     data = level;
     writeData = "["+this.levels.data+"]: "+data;
   } else {
-    writeData = "["+level+"]: "+ "{\""+key+"\": \""+data+"\"";
+    writeData = "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'";
   }
 
   fs.appendFileSync(this.devicePath, writeData);
   // this.write(level, key, data);
 
   // write data up to http endpoint
-
+  var dataString = {"device": this.device, "data":writeData};
   var options = {
     host: 'http://testalator.herokuapp.com/',
-    path: '/'+bench+"/"+this.device+"/logs",
-    method: 'POST'
+    path: "/d/"+this.device+"/logs",
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
   };
 
   var req = http.request(options, function(response) {
@@ -131,16 +157,30 @@ Logger.prototype.deviceWrite = function(level, key, data){
     });
   });
 
-  req.write(writeData);
+  req.write(dataString);
   req.end();
 }
 
 Logger.prototype.deviceUpdate = function(test, status) {
   // pushes device programming status up to testalator
+
+  if (!this._checkDevice) {
+    return console.error("no device id found, cannot update");
+  }
+
+  var dataString = {"device": this.device, 
+    "firmware": this.deviceFirmware, 
+    "built": this.deviceBuild,
+    "runtime": this.deviceRuntime,
+    "otp": this.deviceOtp,
+    "test": test, 
+    "status":status};
+
   var options = {
     host: 'http://testalator.herokuapp.com/',
-    path: '/'+bench+"/"+this.device+"/"+test,
-    method: 'POST'
+    path: "/d/"+this.device+"/test/",
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
   };
 
   var req = http.request(options, function(response) {
@@ -154,7 +194,7 @@ Logger.prototype.deviceUpdate = function(test, status) {
     });
   });
 
-  req.write(status);
+  req.write(dataString);
   req.end();
 }
 

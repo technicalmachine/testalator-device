@@ -65,6 +65,9 @@ function pinTest(next){
         if (numDone >= 17) {
           if (passing >= 17) {
             console.log("Passed Pin Test");
+            console.log("{\"pin\": \"passed\"}");
+          } else {
+            console.log("{\"pin\": \"failed\"}");
           }
           console.log("===== pin test: DONE ", passing, "passing ", failing, " failing =====");
           next && next(resString, failing);
@@ -121,6 +124,9 @@ function sckTest(next) {
         if (count >= (sckPorts.length-1)){
           if (passed >= 4){
             console.log("Passed SCK test");
+            console.log("{\"sck\": \"passed\"}");
+          } else {
+            console.log("{\"sck\": \"failed\"}");
           }
           console.log("===== sck test: DONE ", passed, "passing", failed, " failing =====");
           next && next(resString, failed);
@@ -161,6 +167,9 @@ function adcTest(next){
     }
     if (passed >= 6) {
       console.log("Passed ADC test");
+      console.log("{\"adc\": \"passed\"}");
+    } else {
+      console.log("{\"adc\": \"failed\"}");
     }
     console.log("===== adc test: DONE ", passed, "passed", failed, " failed =====");
     next && next(resString, failed);
@@ -192,6 +201,9 @@ function dacTest(next){
     }
     if (passed >= 1){
       console.log("Passed DAC test");
+      console.log("{\"dac\": \"passed\"}");
+    } else {
+      console.log("{\"dac\": \"failed\"}");
     }
     console.log("===== dac test: DONE ", passed, "passing", failed, " failing =====");
     next && next(resString, failed);
@@ -211,10 +223,12 @@ function i2cTest(next){
     i2c_0.transfer(new Buffer([I2C_TEST, 0x00]), 1, function(err, data){
       if (data[0] == OK){
         console.log("PASS: I2C_0");
+        console.log("{\"i2c\": \"passed\"}");
         resString = resString.concat(".");
         passed += 1;
       } else {
         console.log("FAIL: got this", data, "from I2C_0");
+        console.log("{\"i2c\": \"failed\"}");
         resString = resString.concat("x");
         failed += 1;
       }

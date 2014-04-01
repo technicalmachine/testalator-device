@@ -291,6 +291,8 @@ function jsCheck(path, callback){
               logger.writeAll(logger.levels.error, data.jsTest, "failed");
               // toggle led
               errorLed();
+            } else {
+              logger.deviceUpdate(Object.keys(data)[0], data[Object.keys(data)[0]]);
             }
           } else if (command == "s" ){
             // push data into logging
