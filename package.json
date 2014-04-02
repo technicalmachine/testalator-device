@@ -1,0 +1,29 @@
+{
+  "name": "testalator",
+  "version": "0.0.0",
+  "description": "test the tessel",
+  "main": "src/testalator.js",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": "",
+  "author": "Jia Huang <jia@technical.io>",
+  "license": "BSD",
+  "dependencies": {
+    "choices": "0.0.2",
+    "colony": "git+https://tmTestUser:tmTestUser1@github.com/tessel/colony.git",
+    "portscanner": "~0.1.3",
+    "async": "~0.2.9",
+    "carrier": "~0.2.0",
+    "temp": "~0.6.0",
+    "tar": "~0.1.18",
+    "libserialport": "~0.2.3",
+    "usb": "~0.3.4",
+    "fstream": "~0.1.25",
+    "osenv": "0.0.3",
+    "colorsafeconsole": "0.0.4",
+    "pi-gpio": "*",
+    "effess": "*"
+  }
+}
