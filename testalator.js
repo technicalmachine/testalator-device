@@ -59,6 +59,7 @@ function setupLogger(next){
     exec('git rev-parse HEAD', function(err, git, stderr){
       fs.readdir('bin', function(err, files){
         logger = require('./logger.js').create(res.device, git, files);
+        logger.clearDevice();
         next && next();
       });
     });
@@ -70,9 +71,9 @@ function run(){
 
   setupLogger(function (){
      async.waterfall([
-      // function (cb) { setup(cb) },
-      // function (cb) { emc(1, cb) },
-      // function (cb) { rst(cb) },
+      function (cb) { setup(cb) },
+      function (cb) { emc(1, cb) },
+      function (cb) { rst(cb) },
       // function (cb) { usbCheck(NXP_ROM_VID, NXP_ROM_PID, cb) },
       // function (cb) { ram(otpPath, cb) },
       // function (cb) { emc(0, cb) },
@@ -83,7 +84,7 @@ function run(){
       // function (cb) { ram(wifiPatchPath, cb)}
       // function (cb) { wifiPatchCheck(cb) },
       // function (cb) { jsCheck(jsPath, cb) },
-      function (cb) { wifiTest(network, pw, auth, cb)}
+      // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       // console.log("res called");
       logger.writeAll("Finished.");
@@ -535,19 +536,21 @@ function setup(callback){
 
   closeAll(function(err){
     async.parallel(funcArray, function (err, results){
-      if (err){
-        logger.write("couldn't setup pin", err);
-        callback(err);
-      }
+      // if (err){
+        // logger.write("couldn't setup pin", err);
+        // callback();
+      // }
 
       // wait until a button is pressed.
       gpio.open(button, "input", function (err){
+        logger.write("waiting for button press");
+
         var intervalId = setInterval(function(){
           gpio.read(button, function(err, value){
             if (value == 1 ) {
               clearInterval(intervalId);
               logger.write("done with setting up");
-              callback(err);
+              callback();
             }
           });
         }, 20);

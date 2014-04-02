@@ -24,6 +24,7 @@
     "osenv": "0.0.3",
     "colorsafeconsole": "0.0.4",
     "pi-gpio": "*",
-    "effess": "*"
+    "effess": "*",
+    "humanize": "*"
   }
 }

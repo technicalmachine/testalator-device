@@ -1,6 +1,8 @@
 var fs = require('fs'),
     http = require('http');
 
+var HOST = "testalator.herokuapp.com";
+
 function Logger(bench, build, binaries) {
   // start up file log at this timestamp
   // bench: "<benchname>",
@@ -10,8 +12,8 @@ function Logger(bench, build, binaries) {
   this.bench = bench;
   this.build = build;
   this.binaries = binaries;
-  this._updateFilename();
   this.levels = {newDevice: "NEW", error: "ERROR", warning:"WARN", retry: "RETRY", data: "DATA"};
+  this._updateFilename();  
 }
 
 Logger.prototype._isNew = function(){
@@ -25,15 +27,15 @@ Logger.prototype._isNew = function(){
 Logger.prototype._updateFilename = function(){
   this.date = new Date();
   this.filename = "logs/"+(this.date.getYear()+1900)+"-"+this.date.getMonth()+"-"+
-    this.date.getDate()+"-"+this.date.getHours()+"-"+this.date.getMinutes()+".log";
+    this.date.getDate()+"-"+this.date.getHours()+".log";
 
   // var data = "bench: " + this.bench + "\ntime: "+this.date.toISOString()+"\nbuild: "
   // + this.build+"\nbinaries: "+this.binaries+"\n"; 
   // fs.appendFileSync(this.filename, data);
-  this.write(newDevice, "bench", this.bench);
-  this.write(newDevice, "time", this.date.toISOString());
-  this.write(newDevice, "build", this.build);
-  this.write(newDevice, "binaries", this.binaries);
+  this.write(this.levels.newDevice, "bench", this.bench);
+  this.write(this.levels.newDevice, "time", this.date.toISOString());
+  this.write(this.levels.newDevice, "build", this.build);
+  this.write(this.levels.newDevice, "binaries", this.binaries);
 }
 
 Logger.prototype.writeAll = function (level, key, data){
@@ -51,24 +53,25 @@ Logger.prototype.write = function(level, key, data){
 
   var writeData = "["+new Date().toISOString()+"]";
   if (key === undefined && data === undefined) {
-    key = level;
+    key = "data";
     data = level;
-    writeData = "["+this.levels.data+"]: "+data;
-  } else {
-    writeData = "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'";
-  }
+    level = this.levels.data;
+  } 
+
+  writeData += "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'}";
 
   // var writeData = "["+date+"]"+"["+level+"]"+": "+"{\""+key+"\": \""+data+"\"";
-  fs.appendFileSync(this.filename, writeData);
+  fs.appendFileSync(this.filename, "\n"+writeData);
   console.log(writeData);
 
   var dataString = {"device": this.bench, "data":writeData};
 
   var options = {
-    host: 'http://testalator.herokuapp.com/',
-    path: '/b/'+bench+"/logs",
+    host: HOST,
+    path: '/b/'+this.bench+"/logs",
     method: 'POST',
-    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
+    headers: {'Content-Type': 'application/json', 
+    'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
   };
 
   var req = http.request(options, function(response) {
@@ -81,8 +84,8 @@ Logger.prototype.write = function(level, key, data){
       console.log(str);
     });
   });
-
-  req.write(dataString);
+  // console.log("res writing", dataString);
+  req.write(JSON.stringify(dataString));
   req.end();
 }
 
@@ -113,37 +116,38 @@ Logger.prototype.device = function(data, path) {
 }
 
 Logger.prototype._checkDevice = function(){
-  if (this.device == ""){
+  if (this.device == "" || this.device === undefined){
     return false;
   }
   return true;
 }
 
 Logger.prototype.deviceWrite = function(level, key, data){
-  if (!this._checkDevice) {
+  if (!this._checkDevice()) {
     return console.error("no device id found, cannot log");
   }
   // write to both log file and device id file
   // [timestamp][level]: data
   var writeData = "["+new Date().toISOString()+"]";
   if (key === undefined && data === undefined) {
-    key = level;
+    key = "data";
     data = level;
-    writeData = "["+this.levels.data+"]: "+data;
-  } else {
-    writeData = "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'";
-  }
+    level = this.levels.data;
+  } 
 
-  fs.appendFileSync(this.devicePath, writeData);
+  writeData += "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'}";
+
+  fs.appendFileSync(this.devicePath, "\n"+writeData);
   // this.write(level, key, data);
 
   // write data up to http endpoint
   var dataString = {"device": this.device, "data":writeData};
   var options = {
-    host: 'http://testalator.herokuapp.com/',
+    host: 'testalator.herokuapp.com',
     path: "/d/"+this.device+"/logs",
     method: 'POST',
-    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
+    headers: {'Content-Type': 'application/json', 
+      'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
   };
 
   var req = http.request(options, function(response) {
@@ -157,7 +161,7 @@ Logger.prototype.deviceWrite = function(level, key, data){
     });
   });
 
-  req.write(dataString);
+  req.write(JSON.stringify(dataString));
   req.end();
 }
 
@@ -177,10 +181,11 @@ Logger.prototype.deviceUpdate = function(test, status) {
     "status":status};
 
   var options = {
-    host: 'http://testalator.herokuapp.com/',
+    host: HOST,
     path: "/d/"+this.device+"/test/",
     method: 'POST',
-    headers: {'Content-Type': 'application/json', 'Content-Length': dataString.length}
+    headers: {'Content-Type': 'application/json', 
+      'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
   };
 
   var req = http.request(options, function(response) {
@@ -194,9 +199,11 @@ Logger.prototype.deviceUpdate = function(test, status) {
     });
   });
 
-  req.write(dataString);
+  req.write(JSON.stringify(dataString));
   req.end();
 }
+
+
 
 module.exports.create = function(bench, build, binaries){
   return new Logger(bench, build, binaries);
