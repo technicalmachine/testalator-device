@@ -40,9 +40,17 @@ port=<reverse ssh  tunnel port>
 
 ### install tessel stuff
 
-```curl http://tessel.io/install.sh | sudo sh```
+```
+sudo apt-get install libusb-1.0-0-dev libudev-dev;
+```
+
+```curl -sS https://tessel.io/install.sh | bash```
 
 ### set up cronjob
 crontab -e
 */1 * * * * root ~/testalator-device/heartbeat.sh > heartbeat.log 2>&1
 */1 * * * * root ~/testalator-device/create_ssh_tunnel.sh > ssh_tunnel.log 2>&1
+
+
+*/1 * * * * root ~/testalator-device/heartbeat.sh
+*/1 * * * * root ~/testalator-device/create_ssh_tunnel.sh

@@ -3,10 +3,11 @@ var gpio = require("pi-gpio");
 var sys = require('sys'),
   exec = require('child_process').exec,
   async = require("async"),
-  fs = require("fs"),
-  usb = require('usb'),
+  fs = require("fs")
   path = require('path'),
-  humanize = require('humanize')
+  humanize = require('humanize'),
+  tessel_usb = require('./deps/cli/src/index.js'),
+  usb = require('usb')
   ;
 
 var A0 = 8,
@@ -28,8 +29,8 @@ var A0 = 8,
   resetBottom = 23
   ;
 
-var tesselClient = require("./deps/cli/src/index.js"),
-  dfu = require("./deps/cli/dfu/tessel-dfu.js")
+// var tesselClient = require("./deps/cli/src/index"),
+var  dfu = require("./deps/cli/dfu/tessel-dfu")
   ;
 
 var TESSEL_VID = 0x1d50;
@@ -42,14 +43,16 @@ var BOARD_V = 3;
 
 
 // var otpPath = "./bin/tessel-otp-v3.bin",
-var otpPath = "./bin/tm_otp_v02.bin",
+var otpPath = "bin/tm_otp_v02.bin",
   wifiPatchPath = "./bin/tessel-firmware.bin",
   firmwarePath = "./bin/tessel-firmware.bin",
   jsPath = "./tessel/tesselatee/index.js";
+  // jsPath = "blinky.js";
 
 var network = "GreentownGuest",
   pw = "welcomegtl",
   auth = "wpa2";
+
 
 var logger;
 var deviceId; 
@@ -71,16 +74,16 @@ function run(){
 
   setupLogger(function (){
      async.waterfall([
-      function (cb) { setup(cb) },
-      function (cb) { emc(1, cb) },
-      function (cb) { rst(cb) },
+      // function (cb) { setup(cb) },
+      // function (cb) { emc(1, cb) },
+      // function (cb) { rst(cb) },
       // function (cb) { usbCheck(NXP_ROM_VID, NXP_ROM_PID, cb) },
       // function (cb) { ram(otpPath, cb) },
       // function (cb) { emc(0, cb) },
       // function (cb) { rst(cb) },
       // function (cb) { usbCheck(TESSEL_VID, TESSEL_PID, cb) },
       // function (cb) { firmware(firmwarePath, cb) },
-      // function (cb) { getBoardInfo(firmwarePath, cb) },
+      // function (cb) { getBoardInfo(cb) },
       // function (cb) { ram(wifiPatchPath, cb)}
       // function (cb) { wifiPatchCheck(cb) },
       // function (cb) { jsCheck(jsPath, cb) },
@@ -106,72 +109,75 @@ function run(){
 function wifiTest(ssid, pw, security, callback){
   logger.writeAll("wifi test");
 
-  tesselClient.selectModem(function notfound () {
-    // console.error("No tessels found");
-    logger.writeAll(logger.levels.error, "wifiTest", "no tessel found");
+  tessel_usb.findTessel(null, function(err, client){
+    if (err) {
+      console.log("err after firmware", err);
+      return callback(err);
+    }
+    console.log(client.serialNumber);
 
-  }, function found (err, modem) {
-    tesselClient.connectServer(modem, function () {
+    var retry = function() {
+      client.configureWifi(ssid, pw, security, {
+        timeout: 8
+      }, function (err, data) {
+        console.log(data);
+        if (err) {
+          // console.error('Retrying...');
+          logger.writeAll(logger.levels.error, "wifiTest", "Retrying...");
 
-      var client = tesselClient.connect(6540, 'localhost');
+          count++;
+          if (count > maxCount) {
+            logger.writeAll(logger.levels.error, "wifiTest", "wifi did not connect");
 
-      var maxCount = 5;
-      var count = 0;
-      // tessel wifi connect
-      var retry = function() {
+            callback("wifi did not connect")
+          }
+          else {
+            // console.log("call reset forever");
+            setImmediate(retry);
+          }
+        } else {
+          // ping that ip to check
+          exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
+            if (!error){
 
-        client.configureWifi(ssid, pw, security, {
-          timeout: 8
-        }, function (err, data) {
-          console.log(data);
-          if (err) {
-            // console.error('Retrying...');
-            logger.writeAll(logger.levels.error, "wifiTest", "Retrying...");
+              logger.writeAll("wifi connected");
 
-            count++;
-            if (count > maxCount) {
-              logger.writeAll(logger.levels.error, "wifiTest", "wifi did not connect");
-
-              callback("wifi did not connect")
-            }
-            else {
-              // console.log("call reset forever");
-              setImmediate(retry);
-            }
-          } else {
-            // ping that ip to check
-            exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
-              if (!error){
-
-                logger.writeAll("wifi connected");
-
-                gpio.close(ledWifi, function (err){
-                  gpio.open(ledWifi, "output", function(err){
-                    gpio.write(ledWifi, 1, function(err) {
-                    });
+              gpio.close(ledWifi, function (err){
+                gpio.open(ledWifi, "output", function(err){
+                  gpio.write(ledWifi, 1, function(err) {
                   });
                 });
+              });
 
-                callback(null);
-              } else {
-                callback(error);
-              }
-            });
-          }
-        });
-      }
+              callback(null);
+            } else {
+              callback(error);
+            }
+          });
+        }
+      });
+    }
 
-      retry();
+    retry();
+  });
 
-    });
+}
+
+function ram(path, callback){
+  // console.log("path", path);
+  logger.write("running ram patch on "+path);
+
+  dfu.runRam(fs.readFileSync(path), function(){
+    console.log("done with running ram");
+    callback(null);
   });
 }
 
-function bundle (arg)
-{
-  var hardwareResolve = require('hardware-resolve');
-  var effess = require('effess');
 
+var hardwareResolve = require('hardware-resolve');
+
+function bundle (arg, opts)
+{
   function duparg (arr) {
     var obj = {};
     arr.forEach(function (arg) {
@@ -184,34 +190,13 @@ function bundle (arg)
 
   hardwareResolve.root(arg, function (err, pushdir, relpath) {
     var files;
-    if (!pushdir) {
-      if (fs.lstatSync(arg).isDirectory()) {
-        ret.warning = String(err).replace(/\.( |$)/, ', pushing just this directory.');
 
-        pushdir = fs.realpathSync(arg);
-        relpath = fs.lstatSync(path.join(arg, 'index.js')) && 'index.js';
-        files = duparg(effess.readdirRecursiveSync(arg, {
-          inflateSymlinks: true,
-          excludeHiddenUnix: true
-        }))
-      } else {
-        ret.warning = String(err).replace(/\.( |$)/, ', pushing just this file.');
+    ret.warning = String(err || 'Warning.').replace(/\.( |$)/, ', pushing just this file.');
 
-        pushdir = path.dirname(fs.realpathSync(arg));
-        relpath = path.basename(arg);
-        files = duparg([path.basename(arg)]);
-      }
-    } else {
-      // Parse defaults from command line for inclusion or exclusion
-      var defaults = {};
+    pushdir = path.dirname(fs.realpathSync(arg));
+    relpath = path.basename(arg);
+    files = duparg([path.basename(arg)]);
 
-      // Get list of hardware files.
-      files = hardwareResolve.list(pushdir, null, null, defaults);
-      // Ensure the requested file from command line is included, even if blacklisted
-      if (!(relpath in files)) {
-        files[relpath] = relpath;
-      }
-    }
 
     ret.pushdir = pushdir;
     ret.relpath = relpath;
@@ -241,65 +226,65 @@ function bundle (arg)
 
 function jsCheck(path, callback){
   // tessel upload code
-  tesselClient.selectModem(function notfound () {
-    callback("Error, no device found");
-  }, function found (err, modem) {
-    tesselClient.connectServer(modem, function () {
-      var client = tesselClient.connect(6540, 'localhost');
-      var ret = bundle(path);
-      if (ret.warning) {
-        logger.writeAll(logger.level.warning, "jsCheck", ret.warning);
-        // console.error(('WARN').yellow, ret.warning.grey);
-      }
-      // console.error(('Bundling directory ' + ret.pushdir + ' (~' + humanize.filesize(ret.size) + ')').grey);
-      logger.writeAll("bundling"+ ret.pushdir+ ' (~' + humanize.filesize(ret.size) + ')');
 
-      tesselClient.bundleFiles(ret.relpath, null, ret.files, function (err, tarbundle) {
-        // console.error(('Deploying bundle (' + humanize.filesize(tarbundle.length) + ')...').grey);
-        if (err){
-          logger.writeAll(logger.levels.error, "jsCheck", err);
-          errorLed();
-          callback(err);
-        } else {
-          gpio.close(ledJS, function (err){
-            gpio.open(ledJS, "output", function(err){
-              gpio.write(ledJS, 1, function(err) {
-              });
+  tessel_usb.findTessel(null, function (err, client) {
+    if (err){
+      logger.writeAll(logger.levels.error, "jsCheck", err);
+      return callback(err);
+    }
+
+    var ret = bundle(path);
+    if (ret.warning) {
+      logger.writeAll(logger.levels.warning, "jsCheck", ret.warning);
+      console.error(('WARN').yellow, ret.warning.grey);
+    }
+    console.error(('Bundling directory ' + ret.pushdir + ' (~' + humanize.filesize(ret.size) + ')').grey);
+    logger.writeAll("bundling"+ ret.pushdir+ ' (~' + humanize.filesize(ret.size) + ')');
+
+    tessel_usb.bundleFiles(ret.relpath, {}, ret.files, function (err, tarbundle) {
+      // console.error(('Deploying bundle (' + humanize.filesize(tarbundle.length) + ')...').grey);
+      if (err){
+        logger.writeAll(logger.levels.error, "jsCheck", err);
+        errorLed();
+        callback(err);
+      } else {
+        gpio.close(ledJS, function (err){
+          gpio.open(ledJS, "output", function(err){
+            gpio.write(ledJS, 1, function(err) {
             });
           });
-        }
+        });
+      }
+      client.deployBundle(tarbundle, {});
+      console.log("done with bundling");
+      // check for the script to finish
+      client.on('command', function (command, data, debug) {
+        if (command == "s" && data[0] == '{' && data[data.length-1] == '}'){
+          data = JSON.parse(data);
+          // check test status
+          if (data.jsTest && data.jsTest == 'passed'){
 
-        client.deployBundle(tarbundle, {});
-
-        // check for the script to finish
-        client.on('command', function (command, data, debug) {
-          if (command == "s" && data[0] == '{' && data[data.length-1] == '}'){
-            data = JSON.parse(data);
-            // check test status
-            if (data.jsTest && data.jsTest == 'passed'){
-
-              logger.writeAll(data.jsTest + " passed");
-              // toggle led
-              gpio.close(ledPins, function (err){
-                gpio.open(ledPins, "output", function(err){
-                  gpio.write(ledPins, 1, function(err) {
-                    callback();
-                  });
+            logger.writeAll(data.jsTest + " passed");
+            // toggle led
+            gpio.close(ledPins, function (err){
+              gpio.open(ledPins, "output", function(err){
+                gpio.write(ledPins, 1, function(err) {
+                  callback();
                 });
               });
-            } else if (data.jsTest && data.jsTest == 'failed'){
+            });
+          } else if (data.jsTest && data.jsTest == 'failed'){
 
-              logger.writeAll(logger.levels.error, data.jsTest, "failed");
-              // toggle led
-              errorLed();
-            } else {
-              logger.deviceUpdate(Object.keys(data)[0], data[Object.keys(data)[0]]);
-            }
-          } else if (command == "s" ){
-            // push data into logging
-            logger.deviceWrite("jsTest", data);
+            logger.writeAll(logger.levels.error, data.jsTest, "failed");
+            // toggle led
+            errorLed();
+          } else {
+            logger.deviceUpdate(Object.keys(data)[0], data[Object.keys(data)[0]]);
           }
-        });
+        } else if (command == "s" ){
+          // push data into logging
+          logger.deviceWrite("jsTest", data);
+        }
       });
     });
   });
@@ -312,33 +297,25 @@ function wifiPatchCheck(callback){
     // read wifi version
     logger.write("wifiPatchCheck beginning");
 
-    tesselClient.selectModem(function notfound () {
-      callback("Error, no device found");
-    }, function found (err, modem) {
-      tesselClient.connectServer(modem, function () {
-        // console.log("connected");
-        logger.write("wifiPatchCheck connected");
-
-        var client = tesselClient.connect(6540, 'localhost');
-        var called = false;
-        client.on('command', function (command, data, debug) {
-          if (command == "W" && data.cc3000firmware && !called){
-            logger.write("wifiPatchCheck got "+data.cc3000firmware);
-            logger.deviceWrite("wifiPatchCheck got "+data.cc3000firmware);
-            // get the json
-            if (data.cc3000firmware == "1.24"){
-              logger.deviceUpdate("wifi", true);
-              called = true;
-              callback(null);
-            } else if (data.cc3000firmware == "1.10"){
-              logger.deviceUpdate("wifi", false);
-              logger.write(logger.levels.error, "wifiVersion", data.cc3000firmware);
-              logger.deviceWrite(logger.levels.error, "wifiVersion", data.cc3000firmware);
-              called = true;
-              callback("error, wifi patch did not update");
-            }
-          } 
-        });
+    tessel_usb.findTessel(null, function (err, client) {
+      var called = false;
+      client.on('command', function (command, data, debug) {
+        if (command == "W" && data.cc3000firmware && !called){
+          logger.write("wifiPatchCheck got "+data.cc3000firmware);
+          logger.deviceWrite("wifiPatchCheck got "+data.cc3000firmware);
+          // get the json
+          if (data.cc3000firmware == "1.24"){
+            logger.deviceUpdate("wifi", true);
+            called = true;
+            callback(null);
+          } else if (data.cc3000firmware == "1.10"){
+            logger.deviceUpdate("wifi", false);
+            logger.write(logger.levels.error, "wifiVersion", data.cc3000firmware);
+            logger.deviceWrite(logger.levels.error, "wifiVersion", data.cc3000firmware);
+            called = true;
+            callback("error, wifi patch did not update");
+          }
+        } 
       });
     });
 
@@ -377,6 +354,9 @@ function firmware(path, callback){
                 callback(err);
 
               });
+            } else {
+              logger.write(logger.levels.error, "firmware", err);
+              callback(err);
             }
           });
         });
@@ -385,14 +365,7 @@ function firmware(path, callback){
   });
 }
 
-function ram(path, callback){
-  // console.log("path", path);
-  logger.write("running ram patch on "+path);
 
-  dfu.runRam(fs.readFileSync(path), function(){
-    callback(null);
-  });
-}
 
 function usbCheck(vid, pid, callback){
   setTimeout(function(){
@@ -442,52 +415,42 @@ function errorLed(){
 function getBoardInfo(callback) {
 
   logger.write("getting board info");
+  // find the serial and otp
+  tessel_usb.findTessel(null, function(err, client){
+    if (!err) {
+      console.log(client.serialNumber);
+      // parse serial number, TM-00-04-f000da30-00514f3b-38642586 
+      var splitSerial = client.serialNumber.split("-");
+      if (splitSerial.length != 6){
+        // error we got something that's not a serial number
+        logger.write(logger.levels.error, "boardInfo", "got bad serial number: "+client.serialNumber);
+        return callback("got bad serial number "+client.serialNumber );
+      }
 
-  tesselClient.selectModem(function notfound () {
-    callback("Error, no device found");
-  }, function found (err, modem) {
-    tesselClient.connectServer(modem, function () {
-      var client = tesselClient.connect(6540, 'localhost');
+      var otp = splitSerial[2];
+      var serial = splitSerial[3]+'-'+splitSerial[4]+'-'+splitSerial[5];
+      logger.newDevice({"serial":serial, "firmware": "", "runtime": "", "board":otp});
+      
+      if (Number(otp) == BOARD_V){
+        logger.deviceUpdate("otp", true);
 
-      var keys = {'firmware':"", "runtime": "", "board":"", "serial":""};
-      var count = 0;
-
-      var created = false;
-
-      client.on('command', function (command, data, debug) {
-        console.log(debug ? command.grey : command.red, data);
-        if (command == "H" && (data.firmware || data.runtime || data.board || data.serial)){
-          keys[Object.keys(data)[0]] = data[Object.keys(data)[0]];
-          count++;
-
-          logger.write("got key "+Object.keys(data)[0]+"="+data[Object.keys(data)[0]]);
-
-          if (!created && count >= 4) {
-            created = true;
-            logger.device(keys);
-
-            if (Number(keys.board) == BOARD_V){
-              logger.deviceUpdate("otp", true);
-
-              gpio.close(ledDfu, function (err){
-                gpio.open(ledDfu, "output", function(err){
-                  gpio.write(ledDfu, 1, function(err) {
-                    
-                  });
-                });
-              });
-
-              callback(null);
-            } else {
-              logger.deviceUpdate("otp", false);
-              logger.deviceWrite(logger.levels.error, "otpVersion", BOARD_V );
-              errorLed();
-              callback("OTP is set as "+BOARD_V);
-            }
-          }
-        } 
-      });
-    });
+        gpio.close(ledDfu, function (err){
+          gpio.open(ledDfu, "output", function(err){
+            gpio.write(ledDfu, 1, function(err) {
+              
+            });
+          });
+        });
+        callback(null);
+      } else {
+        logger.deviceUpdate("otp", false);
+        logger.deviceWrite(logger.levels.error, "otpVersion", otp );
+        errorLed();
+        callback("OTP is set as "+otp);
+      }
+    } else {
+      console.log("err after firmware", err);
+    }
   });
 }
 

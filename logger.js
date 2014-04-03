@@ -97,7 +97,7 @@ Logger.prototype.clearDevice = function(){
   this.devicePath = "";
 }
 
-Logger.prototype.device = function(data, path) {
+Logger.prototype.newDevice = function(data, path) {
   // open up new file in logs/device/device id
 
   // save with initial timestamp
@@ -133,7 +133,7 @@ Logger.prototype.deviceWrite = function(level, key, data){
     key = "data";
     data = level;
     level = this.levels.data;
-  } 
+  }
 
   writeData += "["+level+"]: "+ "{\'"+key+"\': \'"+data+"\'}";
 
