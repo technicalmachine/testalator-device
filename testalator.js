@@ -40,6 +40,7 @@ var NXP_ROM_VID = 0x1fc9;
 var NXP_ROM_PID = 0x000c;
 
 var BOARD_V = 3;
+var CC_VER = "1.24";
 
 
 // var otpPath = "./bin/tessel-otp-v3.bin",
@@ -85,7 +86,7 @@ function run(){
       // function (cb) { firmware(firmwarePath, cb) },
       // function (cb) { getBoardInfo(cb) },
       // function (cb) { ram(wifiPatchPath, cb)}
-      // function (cb) { wifiPatchCheck(cb) },
+      function (cb) { wifiPatchCheck(cb) },
       // function (cb) { jsCheck(jsPath, cb) },
       // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
@@ -295,27 +296,26 @@ function wifiPatchCheck(callback){
   // wait 20 seconds, check for wifi version
   setTimeout(function(){
     // read wifi version
-    logger.write("wifiPatchCheck beginning");
+    logger.write("wifiPatchCheck beginning. set timeout for 20 seconds.");
 
     tessel_usb.findTessel(null, function (err, client) {
+
+      logger.write("found tessel");
+
       var called = false;
-      client.on('command', function (command, data, debug) {
-        if (command == "W" && data.cc3000firmware && !called){
-          logger.write("wifiPatchCheck got "+data.cc3000firmware);
-          logger.deviceWrite("wifiPatchCheck got "+data.cc3000firmware);
-          // get the json
-          if (data.cc3000firmware == "1.24"){
-            logger.deviceUpdate("wifi", true);
-            called = true;
-            callback(null);
-          } else if (data.cc3000firmware == "1.10"){
-            logger.deviceUpdate("wifi", false);
-            logger.write(logger.levels.error, "wifiVersion", data.cc3000firmware);
-            logger.deviceWrite(logger.levels.error, "wifiVersion", data.cc3000firmware);
-            called = true;
-            callback("error, wifi patch did not update");
-          }
-        } 
+      client.wifiVer(function(err, data){
+        console.log("wifi version check", data);
+        if (data == CC_VER) {
+          logger.deviceUpdate("wifi", true);
+          called = true;
+          callback(null);
+        } else {
+          logger.deviceUpdate("wifi", false);
+          logger.write(logger.levels.error, "wifiVersion", data);
+          logger.deviceWrite(logger.levels.error, "wifiVersion", data);
+          called = true;
+          callback("error, wifi patch did not update");
+        }
       });
     });
 
