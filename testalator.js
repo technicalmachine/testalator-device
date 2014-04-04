@@ -86,11 +86,10 @@ function run(){
       // function (cb) { firmware(firmwarePath, cb) },
       // function (cb) { getBoardInfo(cb) },
       // function (cb) { ram(wifiPatchPath, cb)}
-      function (cb) { wifiPatchCheck(cb) },
+      // function (cb) { wifiPatchCheck(cb) },
       // function (cb) { jsCheck(jsPath, cb) },
       // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
-      // console.log("res called");
       logger.writeAll("Finished.");
 
       if (err){
@@ -109,6 +108,8 @@ function run(){
 
 function wifiTest(ssid, pw, security, callback){
   logger.writeAll("wifi test");
+  var count = 0;
+  var maxCount = 10;
 
   tessel_usb.findTessel(null, function(err, client){
     if (err) {
@@ -120,24 +121,22 @@ function wifiTest(ssid, pw, security, callback){
     var retry = function() {
       client.configureWifi(ssid, pw, security, {
         timeout: 8
-      }, function (err, data) {
-        console.log(data);
-        if (err) {
-          // console.error('Retrying...');
-          logger.writeAll(logger.levels.error, "wifiTest", "Retrying...");
+      }, function (data) {
+
+        if (!data.connected) {
+          logger.writeAll(logger.levels.error, "wifiTest", "Retrying... #"+count);
 
           count++;
           if (count > maxCount) {
             logger.writeAll(logger.levels.error, "wifiTest", "wifi did not connect");
 
             callback("wifi did not connect")
-          }
-          else {
-            // console.log("call reset forever");
+          } else {
             setImmediate(retry);
           }
         } else {
-          // ping that ip to check
+          logger.writeAll("connected on try #"+count+" with ip "+data.ip);
+
           exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
             if (!error){
 
