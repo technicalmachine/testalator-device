@@ -75,20 +75,14 @@ function run(){
 
   setupLogger(function (){
      async.waterfall([
-      // function (cb) { setup(cb) },
-      // function (cb) { emc(1, cb) },
-      // function (cb) { rst(cb) },
-      // function (cb) { usbCheck(NXP_ROM_VID, NXP_ROM_PID, cb) },
-      // function (cb) { ram(otpPath, cb) },
-      // function (cb) { emc(0, cb) },
-      // function (cb) { rst(cb) },
-      // function (cb) { usbCheck(TESSEL_VID, TESSEL_PID, cb) },
-      // function (cb) { firmware(firmwarePath, cb) },
-      // function (cb) { getBoardInfo(cb) },
-      // function (cb) { ram(wifiPatchPath, cb)},
-      // function (cb) { wifiPatchCheck(cb) },
+      function (cb) { setup(cb) },
+      function (cb) { checkOTP(cb)},
+      function (cb) { firmware(firmwarePath, cb) },
+      function (cb) { getBoardInfo(cb) },
+      function (cb) { ram(wifiPatchPath, cb)},
+      function (cb) { wifiPatchCheck(cb) },
       function (cb) { jsCheck(jsPath, cb) },
-      // function (cb) { wifiTest(network, pw, auth, cb)}
+      function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
 
@@ -185,6 +179,49 @@ function ram(path, callback){
   });
 }
 
+function checkOTP(callback){
+  logger.write("starting check OTP");
+
+  emc(1, function(err) {
+    if (err) return callback(err);
+    rst(function(err){
+      if (err) return callback(err);
+      usbCheck(NXP_ROM_VID, NXP_ROM_PID, function(err){
+        // if it is found otp
+        if (!err) {
+          ram(otpPath, function(err){
+            if (err) return callback(err);
+            emc(0, function(err){
+              if (err) return callback(err);
+              rst(function(err){
+                if (err) return callback(err);
+                usbCheck(TESSEL_VID, TESSEL_PID, function(){
+                  if (err) {
+                    logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
+                    return callback(err);
+                  }
+                  logger.write("done with check OTP");
+                  callback(null);
+                });
+                
+              });
+            });
+          });
+        } else {
+          // if it's not found check for other otp.
+          usbCheck(TESSEL_VID, TESSEL_PID, function(err){
+            if (err) {
+              // otherwise it's an error
+              logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
+              return callback(err);
+            }
+            logger.write("already OTP'ed");
+          });
+        }
+      });
+    });
+  });
+}
 
 var hardwareResolve = require('hardware-resolve');
 
@@ -389,6 +426,7 @@ function usbCheck(vid, pid, callback){
       logger.write("found vid/pid "+vid+"/"+pid);
       callback(null);
     } else {
+      logger.write(logger.levels.error, "usb_check", "cannot find vid/pid: " + vid + " " + pid);
       callback("Error cannot find vid/pid: " + vid + " " + pid, "usb check");
     }
   }, 1000);
