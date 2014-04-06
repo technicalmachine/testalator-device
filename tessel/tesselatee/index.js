@@ -27,7 +27,7 @@ var i2c_0 = new ports['C'].I2C(addr); // the other i2c port
 
 function checkOk(data){
   if (data[0] != OK) {
-    console.log("Error: cannot establish comms with Testalator");
+    console.log("{\"error\": \"cannot establish comms with Testalator\"}")
     return false;
   }
   return true;
@@ -41,7 +41,10 @@ function pinTest(next){
   i2c.transfer(new Buffer([PIN_TEST, 0x00]), 1, function(err, data) {
     // console.log("got data", data);
     // console.log("sent pin test cmd", PIN_TEST, " got response ", data);
-    if (!checkOk(data)) return;
+    if (!checkOk(data)) {
+      console.log("{\"pin\": \"failed\"}");
+      return next && next("no comms", failed);
+    }
     // look through all the gpios
     var numDone = 0;
     Object.keys(ports).forEach(function(port){
@@ -107,8 +110,10 @@ function sckTest(next) {
   var resString = "SCK TEST: ";
 
   i2c.transfer(new Buffer([SCK_TEST, 5]), 2, function(err, data) {
-    if (!checkOk(data)) return;
-    
+    if (!checkOk(data)) {
+      console.log("{\"sck\": \"failed\"}");
+      return next && next("no comms", failed);
+    }
     console.log("sent sck test cmd", SCK_TEST, " got response", data);
     function iterate() {
       // console.log("count", count, sckPorts[count], sckPorts.length);
@@ -149,7 +154,10 @@ function adcTest(next){
   var resString = "ADC TEST: ";
 
   i2c.transfer(new Buffer([ADC_TEST, 0x00]), 1, function(err, data) {
-    if (!checkOk(data)) return;
+    if (!checkOk(data)) {
+      console.log("{\"adc\": \"failed\"}");
+      return next && next("no comms", failed);
+    }
     
     console.log("sent adc test cmd", ADC_TEST, " got response ", data);
     for (var i = 1; i < 7; i++) {
@@ -184,7 +192,10 @@ function dacTest(next){
   var resString = "DAC TEST: ";
 
   i2c.transfer(new Buffer([DAC_TEST, 0x00]), 5, function(err, data) {
-    if (!checkOk(data)) return;
+    if (!checkOk(data)) {
+      console.log("{\"dac\": \"failed\"}");
+      return next && next("no comms", failed);
+    } 
 
     console.log("sent dac test cmd", DAC_TEST, " got response ", data);
     var dac_data = (data[1] << 24) + (data[2] << 16) + (data[3] << 8) + data[4]; 
@@ -217,7 +228,10 @@ function i2cTest(next){
   var resString = "I2C TEST: ";
 
   i2c.transfer(new Buffer([I2C_TEST, 0x00]), 1, function(err, data){
-    if (!checkOk(data)) return;
+    if (!checkOk(data)) {
+      console.log("{\"i2c\": \"failed\"}");
+      return next && next("no comms", failed);
+    }
 
     i2c.disable();
     i2c_0.transfer(new Buffer([I2C_TEST, 0x00]), 1, function(err, data){
@@ -239,13 +253,29 @@ function i2cTest(next){
   });
 }
 
+var led1 = tessel.led(1).output().high();
+var led2 = tessel.led(2).output().high();
+
 console.log("executing tests");
 
 pinTest(function(pinRes, pinFail){
+  led1.toggle();
   sckTest(function(sckRes, sckFail){
+    led1.toggle();
+    led2.toggle();
+
     adcTest(function(adcRes, adcFail){
+      led1.toggle();
+      led2.toggle();
+
       dacTest(function(dacRes, dacFail){
+        led1.toggle();
+        led2.toggle();
+
         i2cTest(function(i2cRes, i2cFail){
+          led1.toggle();
+          led2.toggle();
+
           console.log("======= FINISHED ALL TESTS =======");
           console.log(pinRes);
           console.log(sckRes);

@@ -43,6 +43,30 @@ Logger.prototype.writeAll = function (level, key, data){
   this.deviceWrite(level, key, data);
 }
 
+function postToWeb(path, data){
+  var options = {
+    host: 'testalator.herokuapp.com',
+    path: path,
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 
+      'Content-Length': Buffer.byteLength(JSON.stringify(data))}
+  };
+
+  var req = http.request(options, function(response) {
+    var str = ''
+    response.on('data', function (chunk) {
+      str += chunk;
+    });
+
+    response.on('end', function () {
+      console.log(str);
+    });
+  });
+
+  req.write(JSON.stringify(data));
+  req.end();
+}
+
 Logger.prototype.write = function(level, key, data){
   // [timestamp][level]: data
 
@@ -105,7 +129,7 @@ Logger.prototype.newDevice = function(data, path) {
   this.deviceFirmware = data.firmware;
   this.deviceRuntime = data.runtime;
   this.deviceOtp = data.board;
-  this.devicePath = "logs/devices/"+this.device;
+  this.devicePath = "logs/devices/"+this.device+".log";
   this.deviceBuild = new Date().toISOString();
   // fs.mkdirSync("logs/devices/");
   fs.appendFileSync(this.devicePath, this.deviceBuild);
@@ -113,6 +137,19 @@ Logger.prototype.newDevice = function(data, path) {
   this.write(this.levels.newDevice, "firmware", data.firmware);
   this.write(this.levels.newDevice, "runtime", data.runtime);
   this.write(this.levels.newDevice, "otp", data.board);
+
+  // send off log about new device
+  postToWeb("/device/", {"bench": this.device, 
+    "built": this.deviceBuild, 
+    "id": this.device,
+    "tiFirmware": "untested", 
+    "firmware": this.deviceFirmware,
+    "adc": "untested",
+    "spi": "untested",
+    "i2c": "untested", 
+    "gpio": "untested",
+    "otp": this.deviceOtp,
+    "wifi": "untested"});
 }
 
 Logger.prototype._checkDevice = function(){
@@ -141,28 +178,7 @@ Logger.prototype.deviceWrite = function(level, key, data){
   // this.write(level, key, data);
 
   // write data up to http endpoint
-  var dataString = {"device": this.device, "data":writeData};
-  var options = {
-    host: 'testalator.herokuapp.com',
-    path: "/d/"+this.device+"/logs",
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 
-      'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
-  };
-
-  var req = http.request(options, function(response) {
-    var str = ''
-    response.on('data', function (chunk) {
-      str += chunk;
-    });
-
-    response.on('end', function () {
-      console.log(str);
-    });
-  });
-
-  req.write(JSON.stringify(dataString));
-  req.end();
+  postToWeb("/d/"+this.device+"/logs", {"device": this.device, "data":writeData});
 }
 
 Logger.prototype.deviceUpdate = function(test, status) {
@@ -171,39 +187,20 @@ Logger.prototype.deviceUpdate = function(test, status) {
   if (!this._checkDevice) {
     return console.error("no device id found, cannot update");
   }
-
-  var dataString = {"device": this.device, 
+  if (status == true){
+    status = "pass";
+  } else {
+    status = "fail";
+  }
+  postToWeb("/d/"+this.device+"/test/", {"device": this.device, 
     "firmware": this.deviceFirmware, 
     "built": this.deviceBuild,
     "runtime": this.deviceRuntime,
     "otp": this.deviceOtp,
     "test": test, 
-    "status":status};
-
-  var options = {
-    host: HOST,
-    path: "/d/"+this.device+"/test/",
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 
-      'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
-  };
-
-  var req = http.request(options, function(response) {
-    var str = ''
-    response.on('data', function (chunk) {
-      str += chunk;
-    });
-
-    response.on('end', function () {
-      console.log(str);
-    });
-  });
-
-  req.write(JSON.stringify(dataString));
-  req.end();
+    "status":status,
+    "bench": this.bench});
 }
-
-
 
 module.exports.create = function(bench, build, binaries){
   return new Logger(bench, build, binaries);

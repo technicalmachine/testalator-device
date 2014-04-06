@@ -39,13 +39,13 @@ var TESSEL_PID = 0x6097;
 var NXP_ROM_VID = 0x1fc9;
 var NXP_ROM_PID = 0x000c;
 
-var BOARD_V = 3;
+var BOARD_V = 4;
 var CC_VER = "1.24";
 
 
 // var otpPath = "./bin/tessel-otp-v3.bin",
-var otpPath = "bin/tm_otp_v02.bin",
-  wifiPatchPath = "./bin/tessel-firmware.bin",
+var otpPath = "",
+  wifiPatchPath = "./bin/tessel-cc3k-patch.bin",
   firmwarePath = "./bin/tessel-firmware.bin",
   jsPath = "./tessel/tesselatee/index.js";
   // jsPath = "blinky.js";
@@ -85,9 +85,9 @@ function run(){
       // function (cb) { usbCheck(TESSEL_VID, TESSEL_PID, cb) },
       // function (cb) { firmware(firmwarePath, cb) },
       // function (cb) { getBoardInfo(cb) },
-      // function (cb) { ram(wifiPatchPath, cb)}
+      // function (cb) { ram(wifiPatchPath, cb)},
       // function (cb) { wifiPatchCheck(cb) },
-      // function (cb) { jsCheck(jsPath, cb) },
+      function (cb) { jsCheck(jsPath, cb) },
       // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
@@ -139,7 +139,7 @@ function wifiTest(ssid, pw, security, callback){
 
           exec("fping -c1 -t500 "+data.ip, function(error, stdout, stderr){
             if (!error){
-
+              logger.deviceUpdate("wifi", true);
               logger.writeAll("wifi connected");
 
               gpio.close(ledWifi, function (err){
@@ -151,6 +151,8 @@ function wifiTest(ssid, pw, security, callback){
 
               callback(null);
             } else {
+              logger.deviceUpdate("wifi", false);
+              logger.writeAll(logger.levels.error,"wifi","wifi connected but could not ping: " +error);
               callback(error);
             }
           });
@@ -166,10 +168,20 @@ function wifiTest(ssid, pw, security, callback){
 function ram(path, callback){
   // console.log("path", path);
   logger.write("running ram patch on "+path);
+  gpio.close(config, function (err) {
+    gpio.open(config, "output", function(err){
+      gpio.write(config, 1, function(err){
+        rst(function(err){
 
-  dfu.runRam(fs.readFileSync(path), function(){
-    console.log("done with running ram");
-    callback(null);
+          setTimeout(function(){
+            dfu.runRam(fs.readFileSync(path), function(){
+              console.log("done with running ram");
+              callback(null);
+            });
+          }, 1000);
+        });
+      });
+    });
   });
 }
 
@@ -228,6 +240,7 @@ function jsCheck(path, callback){
   // tessel upload code
 
   tessel_usb.findTessel(null, function (err, client) {
+
     if (err){
       logger.writeAll(logger.levels.error, "jsCheck", err);
       return callback(err);
@@ -259,6 +272,7 @@ function jsCheck(path, callback){
       console.log("done with bundling");
       // check for the script to finish
       client.on('command', function (command, data, debug) {
+        console.log("got a command", command, data, debug);
         if (command == "s" && data[0] == '{' && data[data.length-1] == '}'){
           data = JSON.parse(data);
           // check test status
@@ -283,7 +297,7 @@ function jsCheck(path, callback){
           }
         } else if (command == "s" ){
           // push data into logging
-          logger.deviceWrite("jsTest", data);
+          logger.writeAll("jsTest", data);
         }
       });
     });
@@ -305,13 +319,12 @@ function wifiPatchCheck(callback){
       client.wifiVer(function(err, data){
         console.log("wifi version check", data);
         if (data == CC_VER) {
-          logger.deviceUpdate("wifi", true);
+          logger.deviceUpdate("tiFirmware", true);
           called = true;
           callback(null);
         } else {
-          logger.deviceUpdate("wifi", false);
-          logger.write(logger.levels.error, "wifiVersion", data);
-          logger.deviceWrite(logger.levels.error, "wifiVersion", data);
+          logger.deviceUpdate("tiFirmware", false);
+          logger.writeAll(logger.levels.error, "wifiVersion", data);
           called = true;
           callback("error, wifi patch did not update");
         }
@@ -326,8 +339,9 @@ function firmware(path, callback){
   // config and reset
   gpio.close(config, function (err) {
     gpio.open(config, "output", function(err){
-      gpio.write(config, 0, function(err){
+      gpio.write(config, 1, function(err){
         rst(function(err){
+
           usbCheck(TESSEL_VID, TESSEL_PID, function(error, data){
             // console.log("error", error, "data", data);
             if (!error){
@@ -372,6 +386,7 @@ function usbCheck(vid, pid, callback){
     logger.write("checking usb for "+vid+"/"+pid);
 
     if (usb.findByIds(vid, pid)){
+      logger.write("found vid/pid "+vid+"/"+pid);
       callback(null);
     } else {
       callback("Error cannot find vid/pid: " + vid + " " + pid, "usb check");
@@ -384,9 +399,6 @@ function rst(callback){
   logger.write("resetting Tessel");
 
   gpio.close(reset, function (err){
-    if (err){
-
-    }
     gpio.open(reset, "output", function(err){
       gpio.write(reset, 0, function(err) {
         // wait a bit
@@ -414,43 +426,45 @@ function errorLed(){
 function getBoardInfo(callback) {
 
   logger.write("getting board info");
-  // find the serial and otp
-  tessel_usb.findTessel(null, function(err, client){
-    if (!err) {
-      console.log(client.serialNumber);
-      // parse serial number, TM-00-04-f000da30-00514f3b-38642586 
-      var splitSerial = client.serialNumber.split("-");
-      if (splitSerial.length != 6){
-        // error we got something that's not a serial number
-        logger.write(logger.levels.error, "boardInfo", "got bad serial number: "+client.serialNumber);
-        return callback("got bad serial number "+client.serialNumber );
-      }
+  setTimeout(function(){
+    // find the serial and otp
+    tessel_usb.findTessel(null, function(err, client){
+      if (!err) {
+        console.log(client.serialNumber);
+        // parse serial number, TM-00-04-f000da30-00514f3b-38642586 
+        var splitSerial = client.serialNumber.split("-");
+        if (splitSerial.length != 6){
+          // error we got something that's not a serial number
+          logger.write(logger.levels.error, "boardInfo", "got bad serial number: "+client.serialNumber);
+          return callback("got bad serial number "+client.serialNumber );
+        }
 
-      var otp = splitSerial[2];
-      var serial = splitSerial[3]+'-'+splitSerial[4]+'-'+splitSerial[5];
-      logger.newDevice({"serial":serial, "firmware": "", "runtime": "", "board":otp});
-      
-      if (Number(otp) == BOARD_V){
-        logger.deviceUpdate("otp", true);
+        var otp = splitSerial[2];
+        var serial = splitSerial[3]+'-'+splitSerial[4]+'-'+splitSerial[5];
+        logger.newDevice({"serial":serial, "firmware": "", "runtime": "", "board":otp});
+        
+        if (Number(otp) == BOARD_V){
+          logger.deviceUpdate("otp", true);
 
-        gpio.close(ledDfu, function (err){
-          gpio.open(ledDfu, "output", function(err){
-            gpio.write(ledDfu, 1, function(err) {
-              
+          gpio.close(ledDfu, function (err){
+            gpio.open(ledDfu, "output", function(err){
+              gpio.write(ledDfu, 1, function(err) {
+                
+              });
             });
           });
-        });
-        callback(null);
+          callback(null);
+        } else {
+          logger.deviceUpdate("otp", false);
+          logger.writeAll(logger.levels.error, "otpVersion", otp );
+          errorLed();
+          callback("OTP is set as "+otp);
+        }
       } else {
-        logger.deviceUpdate("otp", false);
-        logger.deviceWrite(logger.levels.error, "otpVersion", otp );
-        errorLed();
-        callback("OTP is set as "+otp);
+        console.log("err after firmware", err);
       }
-    } else {
-      console.log("err after firmware", err);
-    }
-  });
+    });
+  }, 1000);
 }
 
 function closeAll(callback){
@@ -485,13 +499,19 @@ function setup(callback){
   logger.write("setting up...");
   var funcArray = [];
   [reset, ledDfu, ledFirmware, ledJS, ledPins, 
-  ledWifi, ledDone, ledError, busy].forEach(function(element){
+  ledWifi, ledDone, ledError, busy, config, reset].forEach(function(element){
     funcArray.push(function(cb){
       gpio.open(element, "output", function(err){
         // gpio.close(element);
-        gpio.write(element, 0, function(err) {
-          cb(err);
-        });
+        if (element == reset) {
+          gpio.write(element, 1, function(err) {
+            cb(err);
+          });
+        } else {
+          gpio.write(element, 0, function(err) {
+            cb(err);
+          });
+        }
       });
     });
   });

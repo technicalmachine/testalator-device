@@ -23,8 +23,11 @@
     "fstream": "~0.1.25",
     "osenv": "0.0.3",
     "colorsafeconsole": "0.0.4",
+    "hardware-resolve": "*",
     "pi-gpio": "*",
     "effess": "*",
-    "humanize": "*"
+    "humanize": "*",
+    "aws-sdk": "~2.0.0-rc13",
+    "archiver": "~0.8.1"
   }
 }

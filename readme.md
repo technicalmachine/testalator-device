@@ -54,3 +54,10 @@ crontab -e
 
 */1 * * * * root ~/testalator-device/heartbeat.sh
 */1 * * * * root ~/testalator-device/create_ssh_tunnel.sh
+
+
+### running
+
+```
+sudo $(which node) testalator.js
+```
