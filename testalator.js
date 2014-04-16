@@ -21,12 +21,12 @@ var A0 = 8,
   ledJS = 13,
   ledPins = 15,
   ledWifi = 16,
+  usbPwr = 18,
   ledDone = 19,
   ledError = 26,
   busy = 3,
-  powerCycle = 18,
   config = 5,
-  resetBottom = 23
+  extPwr = 23
   ;
 
 // var tesselClient = require("./deps/cli/src/index"),
@@ -42,16 +42,16 @@ var NXP_ROM_PID = 0x000c;
 var BOARD_V = 4;
 var CC_VER = "1.24";
 
-
+var tessel = null;
 // var otpPath = "./bin/tessel-otp-v3.bin",
 var otpPath = "",
   wifiPatchPath = "./bin/tessel-cc3k-patch.bin",
   firmwarePath = "./bin/tessel-firmware.bin",
-  jsPath = "./tessel/tesselatee/index.js";
+  jsPath = "./bin/tessel-js.tar";
   // jsPath = "blinky.js";
 
-var network = "GreentownGuest",
-  pw = "welcomegtl",
+var network = "GreentownFast",
+  pw = "337SummerSt",
   auth = "wpa2";
 
 
@@ -75,27 +75,31 @@ function run(){
 
   setupLogger(function (){
      async.waterfall([
+      // function(cb){testFirmware(firmwarePath, cb)}
+      // function (cb) { ramTest(wifiPatchPath, cb)}
+
       function (cb) { setup(cb) },
-      function (cb) { checkOTP(cb)},
-      function (cb) { firmware(firmwarePath, cb) },
+      // function (cb) { checkOTP(cb)},
+      // function (cb) { firmware(firmwarePath, cb) },
+      // function (cb) { ram(wifiPatchPath, cb)},
       function (cb) { getBoardInfo(cb) },
-      function (cb) { ram(wifiPatchPath, cb)},
       function (cb) { wifiPatchCheck(cb) },
       function (cb) { jsCheck(jsPath, cb) },
       function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
-
       if (err){
-        errorLed();
+        toggleLED(ledError, 1);
         logger.writeAll(logger.levels.error, "testalator", err);
         // console.log("Error, ", err);
       } else {
         // console.log("Success!", result);
+        toggleLED(ledDone, 1);
         logger.writeAll("Success!");
       }
-
-      process.exit();
+      setTimeout(function(){
+        process.exit();
+      }, 1000);
     });
   }); 
 }
@@ -105,15 +109,15 @@ function wifiTest(ssid, pw, security, callback){
   var count = 0;
   var maxCount = 10;
 
-  tessel_usb.findTessel(null, function(err, client){
-    if (err) {
-      console.log("err after firmware", err);
-      return callback(err);
-    }
-    console.log(client.serialNumber);
+  // tessel_usb.findTessel(null, function(err, client){
+    // if (err) {
+      // console.log("err after firmware", err);
+      // return callback(err);
+    // }
+    // console.log(tessel.serialNumber);
 
     var retry = function() {
-      client.configureWifi(ssid, pw, security, {
+      tessel.configureWifi(ssid, pw, security, {
         timeout: 8
       }, function (data) {
 
@@ -136,12 +140,7 @@ function wifiTest(ssid, pw, security, callback){
               logger.deviceUpdate("wifi", true);
               logger.writeAll("wifi connected");
 
-              gpio.close(ledWifi, function (err){
-                gpio.open(ledWifi, "output", function(err){
-                  gpio.write(ledWifi, 1, function(err) {
-                  });
-                });
-              });
+              toggleLED(ledWifi);
 
               callback(null);
             } else {
@@ -155,28 +154,39 @@ function wifiTest(ssid, pw, security, callback){
     }
 
     retry();
-  });
+  // });
 
 }
 
+function ramTest(path, callback){
+  setTimeout(function(){
+    dfu.runRam(fs.readFileSync(path), function(){
+      console.log("done with running ram");
+      callback(null);
+    });
+  }, 1000);
+}
+
 function ram(path, callback){
-  // console.log("path", path);
-  logger.write("running ram patch on "+path);
-  gpio.close(config, function (err) {
-    gpio.open(config, "output", function(err){
+  // gpio.close(config, function (err) {
+    // gpio.open(config, "output", function(err){
       gpio.write(config, 1, function(err){
         rst(function(err){
-
+          logger.write("running ram patch on "+path);
           setTimeout(function(){
-            dfu.runRam(fs.readFileSync(path), function(){
-              console.log("done with running ram");
-              callback(null);
+
+            dfu.runRam(fs.readFileSync(path), function(err){
+              gpio.write(config, 0, function(){
+                if (err) return callback(err);
+                console.log("done with running ram");
+                callback(null);
+              });
             });
           }, 1000);
         });
       });
-    });
-  });
+    // });
+  // });
 }
 
 function checkOTP(callback){
@@ -198,6 +208,7 @@ function checkOTP(callback){
                 usbCheck(TESSEL_VID, TESSEL_PID, function(){
                   if (err) {
                     logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
+                    toggleLED(ledError, 1);
                     return callback(err);
                   }
                   logger.write("done with check OTP");
@@ -213,9 +224,12 @@ function checkOTP(callback){
             if (err) {
               // otherwise it's an error
               logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
+              toggleLED(ledError, 1);
+              
               return callback(err);
             }
             logger.write("already OTP'ed");
+            callback(null);
           });
         }
       });
@@ -225,158 +239,105 @@ function checkOTP(callback){
 
 var hardwareResolve = require('hardware-resolve');
 
-function bundle (arg, opts)
-{
-  function duparg (arr) {
-    var obj = {};
-    arr.forEach(function (arg) {
-      obj[arg] = arg;
-    })
-    return obj;
-  }
-
-  var ret = {};
-
-  hardwareResolve.root(arg, function (err, pushdir, relpath) {
-    var files;
-
-    ret.warning = String(err || 'Warning.').replace(/\.( |$)/, ', pushing just this file.');
-
-    pushdir = path.dirname(fs.realpathSync(arg));
-    relpath = path.basename(arg);
-    files = duparg([path.basename(arg)]);
-
-
-    ret.pushdir = pushdir;
-    ret.relpath = relpath;
-    ret.files = files;
-
-    // Update files values to be full paths in pushFiles.
-    Object.keys(ret.files).forEach(function (file) {
-      ret.files[file] = fs.realpathSync(path.join(pushdir, ret.files[file]));
-    })
-  })
-
-  // Dump stats for files and their sizes.
-  var sizelookup = {};
-  Object.keys(ret.files).forEach(function (file) {
-    sizelookup[file] = fs.lstatSync(ret.files[file]).size;
-    var dir = file;
-    do {
-      dir = path.dirname(dir);
-      sizelookup[dir + '/'] = (sizelookup[dir + '/'] || 0) + sizelookup[file];
-    } while (path.dirname(dir) != dir);
-  });
-
-  ret.size = sizelookup['./'] || 0;
-
-  return ret;
-}
-
 function jsCheck(path, callback){
   // tessel upload code
 
-  tessel_usb.findTessel(null, function (err, client) {
+  // tessel_usb.findTessel(null, function (err, client) {
 
-    if (err){
-      logger.writeAll(logger.levels.error, "jsCheck", err);
-      return callback(err);
-    }
+    // if (err){
+      // logger.writeAll(logger.levels.error, "jsCheck", err);
+      // return callback(err);
+    // }
 
-    var ret = bundle(path);
-    if (ret.warning) {
-      logger.writeAll(logger.levels.warning, "jsCheck", ret.warning);
-      console.error(('WARN').yellow, ret.warning.grey);
-    }
-    console.error(('Bundling directory ' + ret.pushdir + ' (~' + humanize.filesize(ret.size) + ')').grey);
-    logger.writeAll("bundling"+ ret.pushdir+ ' (~' + humanize.filesize(ret.size) + ')');
+    // var tessel = client;
 
-    tessel_usb.bundleFiles(ret.relpath, {}, ret.files, function (err, tarbundle) {
-      // console.error(('Deploying bundle (' + humanize.filesize(tarbundle.length) + ')...').grey);
-      if (err){
-        logger.writeAll(logger.levels.error, "jsCheck", err);
-        errorLed();
-        callback(err);
-      } else {
-        gpio.close(ledJS, function (err){
-          gpio.open(ledJS, "output", function(err){
-            gpio.write(ledJS, 1, function(err) {
-            });
-          });
-        });
+
+    var tarbundle = fs.readFileSync(path);
+    tessel.deployBundle(tarbundle, {});
+    console.log("done with bundling");
+    // check for the script to finish
+    tessel.listen(true);
+    var turnOnLED = false;
+    tessel.on('log', function (level, data) {
+      if (!turnOnLED) {
+        turnOnLED = true;
+        toggleLED(ledJS, 1);
       }
-      client.deployBundle(tarbundle, {});
-      console.log("done with bundling");
-      // check for the script to finish
-      client.on('command', function (command, data, debug) {
-        console.log("got a command", command, data, debug);
-        if (command == "s" && data[0] == '{' && data[data.length-1] == '}'){
-          data = JSON.parse(data);
-          // check test status
-          if (data.jsTest && data.jsTest == 'passed'){
 
-            logger.writeAll(data.jsTest + " passed");
-            // toggle led
-            gpio.close(ledPins, function (err){
-              gpio.open(ledPins, "output", function(err){
-                gpio.write(ledPins, 1, function(err) {
-                  callback();
-                });
-              });
-            });
-          } else if (data.jsTest && data.jsTest == 'failed'){
+      if (data[0] == '{' && data[data.length-1] == '}'){
+        // console.log("got a command", level, data);
+        data = JSON.parse(data);
+        // check test status
+        if (data.jsTest && data.jsTest == 'passed'){
+          logger.writeAll( data);
 
-            logger.writeAll(logger.levels.error, data.jsTest, "failed");
-            // toggle led
-            errorLed();
-          } else {
-            logger.deviceUpdate(Object.keys(data)[0], data[Object.keys(data)[0]]);
-          }
-        } else if (command == "s" ){
-          // push data into logging
-          logger.writeAll("jsTest", data);
+          toggleLED(ledPins, 1);
+          callback();
+        } else if (data.jsTest && data.jsTest == 'failed'){
+
+          logger.writeAll(logger.levels.error, data.jsTest, "failed");
+          // toggle led
+          toggleLED(ledError, 1);
+          callback("Could not pass js test");
+        } else {
+          logger.deviceUpdate(Object.keys(data)[0], data[Object.keys(data)[0]]);
         }
-      });
+      } else {
+        // push data into logging
+        logger.writeAll( data);
+      }
     });
-  });
+  // });
 }
 
 function wifiPatchCheck(callback){
-  logger.write("wifiPatchCheck");
+  logger.write("wifiPatchCheck beginning.");
+
   // wait 20 seconds, check for wifi version
   setTimeout(function(){
     // read wifi version
-    logger.write("wifiPatchCheck beginning. set timeout for 20 seconds.");
-
-    tessel_usb.findTessel(null, function (err, client) {
-
-      logger.write("found tessel");
-
-      var called = false;
-      client.wifiVer(function(err, data){
-        console.log("wifi version check", data);
-        if (data == CC_VER) {
-          logger.deviceUpdate("tiFirmware", true);
-          called = true;
-          callback(null);
-        } else {
-          logger.deviceUpdate("tiFirmware", false);
-          logger.writeAll(logger.levels.error, "wifiVersion", data);
-          called = true;
-          callback("error, wifi patch did not update");
-        }
-      });
+    var called = false;
+    tessel.wifiVer(function(err, data){
+      logger.writeAll("wifiPatchCheck", data);
+      if (data == CC_VER) {
+        logger.deviceUpdate("tiFirmware", true);
+        called = true;
+        callback(null);
+      } else {
+        logger.deviceUpdate("tiFirmware", false);
+        logger.writeAll(logger.levels.error, "wifiVersion", data);
+        called = true;
+        callback("error, wifi patch did not update");
+      }
     });
 
-  }, 20000);
+  }, 1000);
+}
+
+function testFirmware(path, callback){
+  usbCheck(TESSEL_VID, TESSEL_PID, function(error, data){
+    // console.log("error", error, "data", data);
+    if (!error){
+      // console.log("writing binary: ", path);
+
+      logger.write("writing binary on "+path);
+      console.log(fs.readdirSync("./bin"));
+      require('./deps/cli/dfu/tessel-dfu').write(fs.readFileSync(path), function(err){
+        console.log("done writing firmware");
+      });
+    }
+  });
 }
 
 function firmware(path, callback){
   logger.write("starting firmware write on "+path);
   // config and reset
-  gpio.close(config, function (err) {
+  console.log("config", config);
+  // gpio.close(config, function (err) {
     gpio.open(config, "output", function(err){
       gpio.write(config, 1, function(err){
+        console.log("config is high");
+
         rst(function(err){
 
           usbCheck(TESSEL_VID, TESSEL_PID, function(error, data){
@@ -387,21 +348,20 @@ function firmware(path, callback){
               logger.write("writing binary on "+path);
               console.log(fs.readdirSync("./bin"));
               require('./deps/cli/dfu/tessel-dfu').write(fs.readFileSync(path), function(err){
-                // console.log("did we get an err?", err);
-                if (err){
-                  logger.write(logger.levels.error, "firmware", err);
-                  errorLed();
-                } else {
-                  gpio.close(ledFirmware, function (err){
-                    gpio.open(ledFirmware, "output", function(err){
-                      gpio.write(ledFirmware, 1, function(err) {
-                        
-                      });
-                    });
-                  });
-                }
 
-                callback(err);
+                // make config low
+                gpio.write(config, 0, function(){
+
+                  if (err){
+                    logger.write(logger.levels.error, "firmware", err);
+                    toggleLED(ledError, 1);
+                    
+                    callback(err);
+                  } else {
+                    toggleLED(ledFirmware, 1);
+                    callback(null);
+                  }
+                });
 
               });
             } else {
@@ -412,10 +372,8 @@ function firmware(path, callback){
         });
       });
     });
-  });
+  // });
 }
-
-
 
 function usbCheck(vid, pid, callback){
   setTimeout(function(){
@@ -442,8 +400,11 @@ function rst(callback){
         // wait a bit
         setTimeout(function() {
           gpio.write(reset, 1, function(err) {
-            logger.write("starting tessel back up");
-            callback(err);
+            setTimeout(function() {
+              logger.write("starting tessel back up");
+              callback(null);
+            }, 300);
+            
           });
         }, 100);
       });
@@ -451,24 +412,23 @@ function rst(callback){
   });
 }
 
-function errorLed(){
-  gpio.close(ledError, function (err){
-    gpio.open(ledError, "output", function(err){
-      gpio.write(ledError, 1, function(err) {
-        
-      });
+function toggleLED(led, state){
+  gpio.open(led, "output", function(err){
+    gpio.write(led, state, function(err) {
     });
   });
 }
 
 function getBoardInfo(callback) {
-
-  logger.write("getting board info");
+  var timeout = 100;
+  logger.write("getting board info. timeout set to "+timeout);
   setTimeout(function(){
     // find the serial and otp
     tessel_usb.findTessel(null, function(err, client){
+      tessel = client;
       if (!err) {
         console.log(client.serialNumber);
+        // console.log(client.version.firmware_git);
         // parse serial number, TM-00-04-f000da30-00514f3b-38642586 
         var splitSerial = client.serialNumber.split("-");
         if (splitSerial.length != 6){
@@ -479,37 +439,35 @@ function getBoardInfo(callback) {
 
         var otp = splitSerial[2];
         var serial = splitSerial[3]+'-'+splitSerial[4]+'-'+splitSerial[5];
-        logger.newDevice({"serial":serial, "firmware": "", "runtime": "", "board":otp});
+        logger.newDevice({"serial":serial, "firmware": client.version.firmware_git, "runtime": client.version.runtime_git, "board":otp});
         
         if (Number(otp) == BOARD_V){
           logger.deviceUpdate("otp", true);
+          toggleLED(ledDfu, 1);
 
-          gpio.close(ledDfu, function (err){
-            gpio.open(ledDfu, "output", function(err){
-              gpio.write(ledDfu, 1, function(err) {
-                
-              });
-            });
-          });
-          callback(null);
         } else {
           logger.deviceUpdate("otp", false);
           logger.writeAll(logger.levels.error, "otpVersion", otp );
-          errorLed();
-          callback("OTP is set as "+otp);
+          toggleLED(ledError, 1);
+
+          return callback("OTP is set as "+otp);
         }
+
+        return callback(null);
       } else {
-        console.log("err after firmware", err);
+        console.log("could not get board info");
+        toggleLED(ledError, 1);
+        return callback(err);
       }
     });
-  }, 1000);
+  }, timeout);
 }
 
 function closeAll(callback){
   var funcArray = [];
   [A0, A6, A8, A7, button, reset, ledDfu, ledFirmware, 
   ledJS, ledPins, ledWifi, ledDone, ledError, busy, 
-  powerCycle, config, resetBottom].forEach(function(element){
+  config, usbPwr, extPwr].forEach(function(element){
     funcArray.push(function(cb){
       gpio.close(element, function(err){
         cb(err);
@@ -537,11 +495,11 @@ function setup(callback){
   logger.write("setting up...");
   var funcArray = [];
   [reset, ledDfu, ledFirmware, ledJS, ledPins, 
-  ledWifi, ledDone, ledError, busy, config, reset].forEach(function(element){
+  ledWifi, ledDone, ledError, busy, config, reset, extPwr].forEach(function(element){
     funcArray.push(function(cb){
       gpio.open(element, "output", function(err){
         // gpio.close(element);
-        if (element == reset) {
+        if (element == reset || element == busy) {
           gpio.write(element, 1, function(err) {
             cb(err);
           });
@@ -553,28 +511,38 @@ function setup(callback){
       });
     });
   });
+  
 
+  var calledBack = false;
   closeAll(function(err){
     async.parallel(funcArray, function (err, results){
       // if (err){
         // logger.write("couldn't setup pin", err);
         // callback();
       // }
+      
+      // have all emcs be inputs
+      emc(0, function(){
+        // wait until a button is pressed.
+        gpio.open(button, "input", function (err){
+          logger.write("waiting for button press");
 
-      // wait until a button is pressed.
-      gpio.open(button, "input", function (err){
-        logger.write("waiting for button press");
-
-        var intervalId = setInterval(function(){
-          gpio.read(button, function(err, value){
-            if (value == 1 ) {
-              clearInterval(intervalId);
-              logger.write("done with setting up");
-              callback();
-            }
-          });
-        }, 20);
+          var intervalId = setInterval(function(){
+            gpio.read(button, function(err, value){
+              if (value == 0 && calledBack == false) {
+                clearInterval(intervalId);
+                logger.write("done with setting up");
+                calledBack = true;
+                // not ready anymore
+                gpio.write(busy, 0, function(){
+                  callback();
+                });
+              }
+            });
+          }, 20);
+        });
       });
+      
     });
   });
 }
@@ -603,7 +571,7 @@ function emc(enable, callback){
           totalErr = totalErr || err;
           count++;
           if (count >= maxNum){
-            callback(err);
+            callback(null);
           }
         });
       });
@@ -617,7 +585,7 @@ function emc(enable, callback){
           count++;
           if (count >= maxNum){
             logger.write("set emc pins as inputs");
-            callback(err);
+            callback(null);
           }
         });
       })

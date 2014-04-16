@@ -39,7 +39,7 @@ function pinTest(next){
   var failing = 0;
   var resString = "PIN TEST: ";
   i2c.transfer(new Buffer([PIN_TEST, 0x00]), 1, function(err, data) {
-    // console.log("got data", data);
+    console.log("got data", data);
     // console.log("sent pin test cmd", PIN_TEST, " got response ", data);
     if (!checkOk(data)) {
       console.log("{\"pin\": \"failed\"}");
@@ -56,7 +56,7 @@ function pinTest(next){
       }
       for (var i = 1; i <= max_gpios; i++) {
         var pin = ports[port].gpio(i).input();
-        if (pin.read() != 0){
+        if (pin.read().value != 0){
           console.log("FAIL: pin ", pin.pin, " on port ", port, " is not low");
           resString = resString.concat("x");
           failing = failing + 1;
