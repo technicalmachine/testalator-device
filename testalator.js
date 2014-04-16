@@ -75,17 +75,14 @@ function run(){
 
   setupLogger(function (){
      async.waterfall([
-      // function(cb){testFirmware(firmwarePath, cb)}
-      // function (cb) { ramTest(wifiPatchPath, cb)}
-
       function (cb) { setup(cb) },
-      // function (cb) { checkOTP(cb)},
-      // function (cb) { firmware(firmwarePath, cb) },
-      // function (cb) { ram(wifiPatchPath, cb)},
+      function (cb) { checkOTP(cb)},
+      function (cb) { firmware(firmwarePath, cb) },
+      function (cb) { ram(wifiPatchPath, cb)},
       function (cb) { getBoardInfo(cb) },
       function (cb) { wifiPatchCheck(cb) },
       function (cb) { jsCheck(jsPath, cb) },
-      function (cb) { wifiTest(network, pw, auth, cb)}
+      // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
       if (err){
@@ -97,9 +94,11 @@ function run(){
         toggleLED(ledDone, 1);
         logger.writeAll("Success!");
       }
-      setTimeout(function(){
-        process.exit();
-      }, 1000);
+      closeAll(function(){
+        setTimeout(function(){
+          process.exit();
+        }, 1000);
+      })
     });
   }); 
 }
@@ -334,7 +333,7 @@ function firmware(path, callback){
   // config and reset
   console.log("config", config);
   // gpio.close(config, function (err) {
-    gpio.open(config, "output", function(err){
+    // gpio.open(config, "output", function(err){
       gpio.write(config, 1, function(err){
         console.log("config is high");
 
@@ -371,7 +370,7 @@ function firmware(path, callback){
           });
         });
       });
-    });
+    // });
   // });
 }
 
@@ -394,8 +393,8 @@ function rst(callback){
   // close it?
   logger.write("resetting Tessel");
 
-  gpio.close(reset, function (err){
-    gpio.open(reset, "output", function(err){
+  // gpio.close(reset, function (err){
+    // gpio.open(reset, "output", function(err){
       gpio.write(reset, 0, function(err) {
         // wait a bit
         setTimeout(function() {
@@ -408,8 +407,8 @@ function rst(callback){
           });
         }, 100);
       });
-    });
-  });
+    // });
+  // });
 }
 
 function toggleLED(led, state){
@@ -420,7 +419,7 @@ function toggleLED(led, state){
 }
 
 function getBoardInfo(callback) {
-  var timeout = 100;
+  var timeout = 15000;
   logger.write("getting board info. timeout set to "+timeout);
   setTimeout(function(){
     // find the serial and otp
