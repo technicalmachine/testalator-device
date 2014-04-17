@@ -48,12 +48,12 @@ sudo apt-get install libusb-1.0-0-dev libudev-dev;
 
 ### set up cronjob
 crontab -e
-*/1 * * * * root ~/testalator-device/heartbeat.sh > heartbeat.log 2>&1
-*/1 * * * * root ~/testalator-device/create_ssh_tunnel.sh > ssh_tunnel.log 2>&1
+*/1 * * * * ~/testalator-device/heartbeat.sh > heartbeat.log 2>&1
+*/1 * * * * ~/testalator-device/create_ssh_tunnel.sh > ssh_tunnel.log 2>&1
+@reboot forever ~/testalator-device/testalator.js
 
-
-*/1 * * * * root ~/testalator-device/heartbeat.sh
-*/1 * * * * root ~/testalator-device/create_ssh_tunnel.sh
+<!-- */1 * * * * root ~/testalator-device/heartbeat.sh -->
+<!-- */1 * * * * root ~/testalator-device/create_ssh_tunnel.sh -->
 
 
 ### running

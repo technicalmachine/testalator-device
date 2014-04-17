@@ -63,7 +63,7 @@ function postToWeb(path, data){
     });
   });
 
-  req.write(JSON.stringify(data));
+  // req.write(JSON.stringify(data));
   req.end();
 }
 
@@ -139,12 +139,13 @@ Logger.prototype.newDevice = function(data, path) {
   this.write(this.levels.newDevice, "otp", data.board);
 
   // send off log about new device
-  postToWeb("/device/", {"bench": this.device, 
+  postToWeb("/device/", {"bench": this.bench, 
     "built": this.deviceBuild, 
     "id": this.device,
     "tiFirmware": "untested", 
     "firmware": this.deviceFirmware,
     "adc": "untested",
+    "dac": "untested",
     "spi": "untested",
     "i2c": "untested", 
     "gpio": "untested",
@@ -189,7 +190,7 @@ Logger.prototype.deviceUpdate = function(test, status) {
   }
   if (status == true){
     status = "pass";
-  } else {
+  } else if (status == false) {
     status = "fail";
   }
   postToWeb("/d/"+this.device+"/test/", {"device": this.device, 
