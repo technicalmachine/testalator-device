@@ -1,5 +1,6 @@
 var fs = require('fs'),
-    http = require('http');
+    http = require('http'),
+    path = require('path');
 
 var HOST = "testalator.herokuapp.com";
 
@@ -26,8 +27,8 @@ Logger.prototype._isNew = function(){
 
 Logger.prototype._updateFilename = function(){
   this.date = new Date();
-  this.filename = "logs/"+(this.date.getYear()+1900)+"-"+this.date.getMonth()+"-"+
-    this.date.getDate()+"-"+this.date.getHours()+".log";
+  this.filename = path.resolve(__dirname,"logs",(this.date.getYear()+1900)+"-"+this.date.getMonth()+"-"+
+    this.date.getDate()+"-"+this.date.getHours()+".log");
 
   // var data = "bench: " + this.bench + "\ntime: "+this.date.toISOString()+"\nbuild: "
   // + this.build+"\nbinaries: "+this.binaries+"\n"; 
@@ -129,7 +130,7 @@ Logger.prototype.newDevice = function(data, path) {
   this.deviceFirmware = data.firmware;
   this.deviceRuntime = data.runtime;
   this.deviceOtp = data.board;
-  this.devicePath = "logs/devices/"+this.device+".log";
+  this.devicePath = path.resolve(__dirname, "logs/devices/"+this.device+".log");
   this.deviceBuild = new Date().toISOString();
   // fs.mkdirSync("logs/devices/");
   fs.appendFileSync(this.devicePath, this.deviceBuild);

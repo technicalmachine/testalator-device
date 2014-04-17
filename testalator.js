@@ -29,7 +29,6 @@ var A0 = 8,
   extPwr = 23
   ;
 
-// var tesselClient = require("./deps/cli/src/index"),
 var  dfu = require("./deps/cli/dfu/tessel-dfu")
   ;
 
@@ -44,10 +43,10 @@ var CC_VER = "1.24";
 
 var tessel = null;
 
-var otpPath = "./bin/tessel-otp-v4.bin",
-  wifiPatchPath = "./bin/tessel-cc3k-patch.bin",
-  firmwarePath = "./bin/tessel-firmware.bin",
-  jsPath = "./bin/tessel-js.tar";
+var otpPath = path.resolve(__dirname, "bin/tessel-otp-v4.bin"),
+  wifiPatchPath = path.resolve(__dirname, "bin/tessel-cc3k-patch.bin"),
+  firmwarePath = path.resolve(__dirname, "bin/tessel-firmware.bin"),
+  jsPath = path.resolve(__dirname, "bin/tessel-js.tar");
 
 var network = "",
   pw = "",
@@ -59,7 +58,7 @@ var logger;
 var deviceId; 
 
 function setupLogger(next){
-  var deviceSettings = require('./parser.js').create('device').process(['device', 'ssid', 'pw', 'auth'], function(res){
+  var deviceSettings = require('./parser.js').create(path.resolve(__dirname,'device')).process(['device', 'ssid', 'pw', 'auth'], function(res){
     network = res.ssid;
     pw = res.pw;
     auth = res.auth;
@@ -80,11 +79,11 @@ function run(){
      async.waterfall([
       function (cb) { closeAll(cb) },
       function (cb) { setup(cb) },
-      // function (cb) { checkOTP(cb)},
-      // function (cb) { firmware(firmwarePath, cb) },
-      // function (cb) { ram(wifiPatchPath, 13500, cb)},
+      function (cb) { checkOTP(cb)},
+      function (cb) { firmware(firmwarePath, cb) },
+      function (cb) { ram(wifiPatchPath, 13500, cb)},
       function (cb) { getBoardInfo(cb) },
-      // function (cb) { wifiPatchCheck(cb) },
+      function (cb) { wifiPatchCheck(cb) },
       function (cb) { jsCheck(jsPath, cb) },
       function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
@@ -334,7 +333,7 @@ function testFirmware(path, callback){
       // console.log("writing binary: ", path);
 
       logger.write("writing binary on "+path);
-      console.log(fs.readdirSync("./bin"));
+      // console.log(fs.readdirSync(path.resolve(__dirname, "bin")));
       require('./deps/cli/dfu/tessel-dfu').write(fs.readFileSync(path), function(err){
         console.log("done writing firmware");
       });
@@ -353,7 +352,7 @@ function firmware(path, callback){
         // console.log("writing binary: ", path);
 
         logger.write("writing binary on "+path);
-        console.log(fs.readdirSync("./bin"));
+        // console.log(fs.readdirSync(path.resolve(__dirname, "bin")));
         require('./deps/cli/dfu/tessel-dfu').write(fs.readFileSync(path), function(err){
 
           // make config low
@@ -476,6 +475,7 @@ function getBoardInfo(callback) {
 
 function closeAll(callback){
   var funcArray = [];
+  console.log("closing all");
   [A0, A6, A8, A7, button, reset, ledDfu, ledFirmware, 
   ledJS, ledPins, ledWifi, ledDone, ledError, busy, 
   config, usbPwr, extPwr].forEach(function(element){
