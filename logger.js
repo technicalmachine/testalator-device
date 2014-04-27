@@ -44,10 +44,10 @@ Logger.prototype.writeAll = function (level, key, data){
   this.deviceWrite(level, key, data);
 }
 
-function postToWeb(path, data){
+function postToWeb(webPath, data){
   var options = {
     host: 'testalator.herokuapp.com',
-    path: path,
+    path: webPath,
     method: 'POST',
     headers: {'Content-Type': 'application/json', 
       'Content-Length': Buffer.byteLength(JSON.stringify(data))}
@@ -64,7 +64,7 @@ function postToWeb(path, data){
     });
   });
 
-  // req.write(JSON.stringify(data));
+  req.write(JSON.stringify(data));
   req.end();
 }
 
@@ -122,7 +122,7 @@ Logger.prototype.clearDevice = function(){
   this.devicePath = "";
 }
 
-Logger.prototype.newDevice = function(data, path) {
+Logger.prototype.newDevice = function(data) {
   // open up new file in logs/device/device id
 
   // save with initial timestamp
