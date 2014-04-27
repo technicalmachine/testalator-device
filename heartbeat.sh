@@ -11,5 +11,5 @@ build=$(git rev-parse HEAD)
 md5=$(cat bin/firmware.md5 | tr -d '\n' | awk '{ print $1 }')
 
 # check out what this bench's device name is
-echo '{"name":"'$device'", "md5:"'$md5', "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}'
-curl -H 'Content-Type: application/json' -d '{"name":"'$device'", "md5:"'$md5', "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}' testalator.herokuapp.com/bench
+echo '{"name":"'$device'", "md5":"'$md5'", "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}'
+curl -H 'Content-Type: application/json' -d '{"name":"'$device'", "md5":"'$md5'", "ip":"'$ip'", "gateway":"'$gateway'", "deviceBuild": "'$build'", "ssh":"'$ssh_ip'", "port":"'$port'"}' testalator.herokuapp.com/bench

@@ -34,8 +34,11 @@ Make sure device has something like
 
 ```
 device=<device name>
-ip=162.243.26.105
+ip=162.243.26.105 #this is rampart
 port=<reverse ssh  tunnel port>
+ssid=<wifi ssid>
+auth=<auth type>
+pw=<wifi pw>
 ```
 
 ### install tessel stuff
@@ -51,6 +54,14 @@ crontab -e
 */1 * * * * ~/testalator-device/heartbeat.sh > heartbeat.log 2>&1
 */1 * * * * ~/testalator-device/create_ssh_tunnel.sh > ssh_tunnel.log 2>&1
 @reboot forever ~/testalator-device/testalator.js
+
+
+### set up the ssh keys
+```
+cd ~/.ssh
+ssh-keygen -t rsa
+ssh-copy-id root@162.243.26.105
+```
 
 <!-- */1 * * * * root ~/testalator-device/heartbeat.sh -->
 <!-- */1 * * * * root ~/testalator-device/create_ssh_tunnel.sh -->
