@@ -48,6 +48,7 @@ var otpPath = path.resolve(__dirname, "bin/tessel-otp-v4.bin"),
   wifiPatchPath = path.resolve(__dirname, "bin/tessel-cc3k-patch.bin"),
   firmwarePath = path.resolve(__dirname, "bin/tessel-firmware.bin"),
   jsPath = path.resolve(__dirname, "bin/tessel-js.tar"),
+  powerPath = path.resolve(__dirname, "bin/tessel-count.tar"),
   firmwareMD5Path = path.resolve(__dirname, "bin/firmware.md5"),
   s3Url = "https://s3.amazonaws.com/testalator-firmware/tessel-firmware.bin",
   s3MD5 = "x-amz-meta-md5"
@@ -162,19 +163,19 @@ function run(){
       function (cb) { getBoardInfo(cb) },
       function (cb) { wifiPatchCheck(cb) },
       function (cb) { jsCheck(jsPath, cb) },
-      // function (cb) { powerSwitch(cb) },
+      function (cb) { powerSwitch(powerPath, cb) },
       function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
       
       setTimeout(function(){
         if (err){
-          toggleLED(ledError, 1);
+          toggle(ledError, 1);
           logger.writeAll(logger.levels.error, "testalator", err);
           // console.log("Error, ", err);
         } else {
           // console.log("Success!", result);
-          toggleLED(ledDone, 1);
+          toggle(ledDone, 1);
           logger.writeAll("Success!");
         }
 
@@ -188,35 +189,82 @@ function run(){
   }); 
 }
 
-function powerSwitch(callback){
+function powerSwitch(powerPath, callback){
+  tessel.listen(true);
+
   logger.writeAll("checking power switching");
   // verify we can find usb
-  usbCheck(TESSEL_VID, TESSEL_PID, function(err){
-    if (err) {
-      logger.writeAll("cannot find tessel vid & pid");
-      return callback(err);
-    }
-    console.log("going through external and usb power");
-    // turn on external power
-    toggleLED(extPwr, 1, function(){
-      // turn off usb power
-      toggleLED(usbPwr, 0,  function (){
-        // verify we can find usb again
-        setTimeout(function (){
-          usbCheck(TESSEL_VID, TESSEL_PID, function(err){
-            if (err){
-              logger.writeAll("Could not find tessel after power switch");
-              logger.deviceUpdate("extPower", "failed");
-              return callback(err);
-            } 
-            // sweet it worked
-            logger.deviceUpdate("extPower", "passed");
-            return callback(null);
-          });
+  // usbCheck(TESSEL_VID, TESSEL_PID, function(err){
+    // if (err) {
+      // logger.writeAll("cannot find tessel vid & pid");
+      // return callback(err);
+    // }
+  var tarbundle = fs.readFileSync(powerPath);
+  // push some js code
+  tessel.deployBundle(tarbundle, {});
+  var count = 0;
+
+  var jsonCount = 0;
+  var jsonMaxCount = 3;
+
+  console.log("going through external and usb power");
+  // turn on external power
+  toggle(extPwr, 1, function(){
+    console.log("external power on");
+    // wait 2 seconds for code to finish pushing
+    toggle(ledPins, 0, function(){
+      console.log("pin off");
+      // close usb comms
+      tessel.close();
+      tessel.once('close', function(){
+        // turn off usb power
+        toggle(usbPwr, 0, function(){
+            // turn on usbPower
+          toggle(usbPwr, 1, function(){
+            tessel_usb.findTessel(null, function (err, client) {
+              if (err) {
+                logger.writeAll(logger.levels.error, "powerSwitch", err);
+                return callback(err);
+              }
+
+              tessel = client;
+              tessel.on('log', function onLog (level, data) {
+                if (data[0] == '{' && data[data.length-1] == '}'){
+                  data = JSON.parse(data);
+                  console.log("got count data", data);
+                  if (data.count && data.count > count){
+                    count = data.count;
+                    jsonCount++;
+
+                    // if we get more than 3 counts
+                    if (jsonCount >= jsonMaxCount) {
+                      tessel.removeListener('log', onLog);
+                      console.log("got more than 3 counts");
+                      toggle(ledPins, 1);
+                      logger.deviceUpdate("extPower", "passed");
+                      return callback(null);
+                    }
+                  }
+                }
+
+                // if we don't get the counts within a specified amount of time it failed
+                setTimeout(function(){
+                  console.log("removing event listener");
+                  if (count == 0 || jsonCount < jsonMaxCount) {
+                    var err = "Could not get a count after power switch";
+                    tessel.removeListener('log', onLog);
+                    logger.writeAll(err);
+                    logger.deviceUpdate("extPower", "failed");
+                    return callback(err);
+                  }
+                }, 3000);
+              });
+            });
+          }, 1000);
         }, 1000);
       });
-
-    });
+    }, 2000);
+      
   });
 }
 
@@ -257,7 +305,7 @@ function wifiTest(ssid, pw, security, callback){
               logger.deviceUpdate("wifi", true);
               logger.writeAll("wifi connected");
 
-              toggleLED(ledWifi, 1);
+              toggle(ledWifi, 1);
 
               callback(null);
             } else {
@@ -330,7 +378,7 @@ function checkOTP(callback){
           //       usbCheck(TESSEL_VID, TESSEL_PID, function(err){
           //         if (err) {
           //           logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
-          //           // toggleLED(ledError, 1);
+          //           // toggle(ledError, 1);
           //           return callback(err);
           //         }
           //         logger.write("done with check OTP");
@@ -347,7 +395,7 @@ function checkOTP(callback){
             if (err) {
               // otherwise it's an error
               logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
-              // toggleLED(ledError, 1);
+              // toggle(ledError, 1);
               
               return callback(err);
             }
@@ -362,7 +410,7 @@ function checkOTP(callback){
 
 var hardwareResolve = require('hardware-resolve');
 
-function jsCheck(path, callback){
+function jsCheck(jsPath, callback){
   // tessel upload code
 
   // tessel_usb.findTessel(null, function (err, client) {
@@ -375,7 +423,7 @@ function jsCheck(path, callback){
     // var tessel = client;
 
 
-    var tarbundle = fs.readFileSync(path);
+    var tarbundle = fs.readFileSync(jsPath);
     tessel.deployBundle(tarbundle, {});
     console.log("done with bundling");
     // check for the script to finish
@@ -384,7 +432,7 @@ function jsCheck(path, callback){
     tessel.on('log', function onLog (level, data) {
       if (!turnOnLED) {
         turnOnLED = true;
-        toggleLED(ledJS, 1);
+        toggle(ledJS, 1);
       }
 
       if (data[0] == '{' && data[data.length-1] == '}'){
@@ -394,14 +442,14 @@ function jsCheck(path, callback){
         if (data.jsTest && data.jsTest == 'passed'){
           console.log("PASSED");
           logger.writeAll("jsTest passed");
-          toggleLED(ledPins, 1);
-          tessel.removeListener('on', onLog);
+          toggle(ledPins, 1);
+          tessel.removeListener('log', onLog);
           return callback();
         } else if (data.jsTest && data.jsTest == 'failed'){
 
           logger.writeAll(logger.levels.error, data.jsTest, "failed");
           // toggle led
-          // toggleLED(ledError, 1);
+          // toggle(ledError, 1);
           callback("Could not pass js test");
         } else {
           console.log("updating", Object.keys(data)[0], data[Object.keys(data)[0]]);
@@ -458,11 +506,11 @@ function firmware(path, callback){
 
             if (err){
               logger.write(logger.levels.error, "firmware", err);
-              // toggleLED(ledError, 1);
+              // toggle(ledError, 1);
               
               callback(err);
             } else {
-              toggleLED(ledFirmware, 1);
+              toggle(ledFirmware, 1);
               callback(null);
             }
           });
@@ -534,10 +582,16 @@ function rst(callback){
   });
 }
 
-function toggleLED(led, state, next){
-    gpio.write(led, state, function(err) {
+function toggle(led, state, next, timeout){
+  gpio.write(led, state, function(err) {
+    if (timeout){
+      setTimeout(function(){
+        next && next();
+      }, timeout);
+    } else {
       next && next();
-    });
+    }
+  });
 }
 
 function getBoardInfo(callback) {
@@ -563,12 +617,12 @@ function getBoardInfo(callback) {
       
       if (Number(otp) == BOARD_V){
         logger.deviceUpdate("otp", otp);
-        toggleLED(ledDfu, 1);
+        toggle(ledDfu, 1);
 
       } else {
         logger.deviceUpdate("otp", false);
         logger.writeAll(logger.levels.error, "otpVersion", otp );
-        // toggleLED(ledError, 1);
+        // toggle(ledError, 1);
 
         return callback("OTP is set as "+otp);
       }
@@ -576,7 +630,7 @@ function getBoardInfo(callback) {
       return callback(null);
     } else {
       console.log("could not get board info");
-      // toggleLED(ledError, 1);
+      // toggle(ledError, 1);
       return callback(err);
     }
   });
@@ -590,7 +644,7 @@ function closeAll(callback){
   config, usbPwr, extPwr].forEach(function(element){
     funcArray.push(function(cb){
       gpio.close(element, function(err){
-        cb(err);
+        cb(null);
       })
     });
   })
@@ -631,39 +685,40 @@ function setup(callback){
   var calledBack = false;
   
   // have all emcs be inputs
-  emc(0, function(){
-    // wait until a button is pressed.
-    gpio.open(button, "input pullup", function (err){
-      gpio.open(busy, "output", function(err){
-        logger.write("waiting for button press");
-        var state = 1;
-        var count = 20;
-        var intervalId = setInterval(function(){
-          // toggle the ready button
-          count++;
-          if (count >= 20) {
-            state = state ? 0 : 1;
-            toggleLED(busy, state);
-            count = 0;
-          }
+  // wait until a button is pressed.
+  gpio.open(button, "input pullup", function (err){
+    gpio.open(busy, "output", function(err){
+      logger.write("waiting for button press");
+      var state = 1;
+      var count = 20;
+      var intervalId = setInterval(function(){
+        // toggle the ready button
+        count++;
+        if (count >= 20) {
+          state = state ? 0 : 1;
+          toggle(busy, state);
+          count = 0;
+        }
 
-          gpio.read(button, function(err, value){
-            if (value == 0 && calledBack == false) {
-              clearInterval(intervalId);
-              
+        gpio.read(button, function(err, value){
+          if (value == 0 && calledBack == false) {
+            clearInterval(intervalId);
+            emc(0, function(){
               calledBack = true;
               // not ready anymore
               async.parallel(funcArray, function (err, results){
                 logger.write("done with setting up");
                 gpio.write(busy, 0, function(){
-                  callback();
+                  setTimeout(function(){
+                    callback();
+
+                  }, 1000);
                 });
               });
-
-            }
-          });
-        }, 20);
-      });
+            });
+          }
+        });
+      }, 20);
     });
   });
     
