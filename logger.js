@@ -60,7 +60,7 @@ function postToWeb(webPath, data){
     });
 
     response.on('end', function () {
-      console.log(str);
+      // console.log(str);
     });
   });
 
@@ -89,29 +89,7 @@ Logger.prototype.write = function(level, key, data){
   fs.appendFileSync(this.filename, "\n"+writeData);
   console.log(writeData);
 
-  var dataString = {"device": this.bench, "data":writeData};
-
-  var options = {
-    host: HOST,
-    path: '/b/'+this.bench+"/logs",
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 
-    'Content-Length': Buffer.byteLength(JSON.stringify(dataString))}
-  };
-
-  var req = http.request(options, function(response) {
-    var str = ''
-    response.on('data', function (chunk) {
-      str += chunk;
-    });
-
-    response.on('end', function () {
-      console.log(str);
-    });
-  });
-  // console.log("res writing", dataString);
-  req.write(JSON.stringify(dataString));
-  req.end();
+  postToWeb('/b/'+this.bench+"/logs", {"device": this.bench, "data":writeData});
 }
 
 Logger.prototype.clearDevice = function(){
