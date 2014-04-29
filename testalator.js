@@ -679,20 +679,19 @@ function emc(enable, callback){
   var funcArray = [];
   [A0, A6, A7, A8].forEach(function(element){
     funcArray.push(function(cb){
-      if (enable){
-        gpio.close(element, function(){
-          gpio.open(element, "output", function(err){
-            gpio.write(element, pinArray[element], function(err) {
-              cb(null);
+      gpio.close(element, function(){
+        if (enable){
+            gpio.open(element, "output", function(err){
+              gpio.write(element, pinArray[element], function(err) {
+                cb(null);
+              });
             });
+        } else {
+          gpio.open(element, "input", function(err){
+            cb(null);
           });
-        });
-      } else {
-        gpio.open(element, "input", function(err){
-          cb(null);
-        });
-      }
-      
+        }
+      });
     });
   });
 
