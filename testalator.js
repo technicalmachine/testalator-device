@@ -183,12 +183,12 @@ function run(){
       function (cb) { closeAll(cb) },
       function (cb) { setup(cb) },
       function (cb) { checkOTP(cb)},
-      function (cb) { firmware(firmwarePath, cb) },
-      function (cb) { ram(wifiPatchPath, 15000, cb)},
-      function (cb) { getBoardInfo(cb) },
-      function (cb) { wifiPatchCheck(cb) },
-      function (cb) { jsCheck(jsPath, cb) },
-      function (cb) { powerSwitch(powerPath, cb) },
+      // function (cb) { firmware(firmwarePath, cb) },
+      // function (cb) { ram(wifiPatchPath, 15000, cb)},
+      // function (cb) { getBoardInfo(cb) },
+      // function (cb) { wifiPatchCheck(cb) },
+      // function (cb) { jsCheck(jsPath, cb) },
+      // function (cb) { powerSwitch(powerPath, cb) },
       // function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
@@ -205,9 +205,9 @@ function run(){
         }
 
         setTimeout(function(){
-          closeAll(function(){
+          // closeAll(function(){
             process.exit();
-          });
+          // });
         }, 500);
       }, 10000);
     });
@@ -225,13 +225,10 @@ function powerSwitch(powerPath, callback){
   var jsonCount = 0;
   var jsonMaxCount = 3;
 
-  console.log("going through external and usb power");
   // turn on external power
   toggle(extPwr, 1, function(){
-    console.log("external power on");
     // wait 2 seconds for code to finish pushing
     toggle(ledPins, 0, function(){
-      console.log("pin off");
       // close usb comms
       tessel.close();
       tessel.once('close', function(){
@@ -250,7 +247,6 @@ function powerSwitch(powerPath, callback){
               tessel.on('log', function onLog (level, data) {
                 if (data[0] == '{' && data[data.length-1] == '}'){
                   data = JSON.parse(data);
-                  console.log("got count data", data);
                   if (data.count && data.count > count){
                     count = data.count;
                     jsonCount++;
@@ -258,7 +254,7 @@ function powerSwitch(powerPath, callback){
                     // if we get more than 3 counts
                     if (jsonCount >= jsonMaxCount) {
                       tessel.removeListener('log', onLog);
-                      console.log("got more than 3 counts");
+                      logger.writeAll("got more than 3 counts, extPwr passed");
                       toggle(ledPins, 1);
                       logger.deviceUpdate("extPower", "passed");
                       tessel.stop();
@@ -647,9 +643,9 @@ function setup(callback){
 
         gpio.read(button, function(err, value){
           if (value == 0 && calledBack == false) {
+            calledBack = true;
             clearInterval(intervalId);
             emc(0, function(){
-              calledBack = true;
               // not ready anymore
               async.series(funcArray, function (err, results){
                 logger.write("done with setting up");
@@ -680,31 +676,31 @@ function emc(enable, callback){
   // console.log("pin array", pinArray);
   logger.write("setting up external memory controller pins");
 
-  if (enable){
-    // open up EMC pins and toggle for DFU mode
-    Object.keys(pinArray).forEach(function(pin){
-      gpio.open(pin, "output", function(err){
-        // TODO: all except one should be low
-        gpio.write(pin, pinArray[pin], function(err) {
-          count++;
-          if (count >= maxNum){
-            callback(null);
-          }
+  var funcArray = [];
+  [A0, A6, A7, A8].forEach(function(element){
+    funcArray.push(function(cb){
+      if (enable){
+        gpio.close(element, function(){
+          gpio.open(element, "output", function(err){
+            gpio.write(element, pinArray[element], function(err) {
+              cb(null);
+            });
+          });
         });
-      });
+      } else {
+        gpio.open(element, "input", function(err){
+          cb(null);
+        });
+      }
+      
     });
-  } else {
-    // close up all EMC pins
-    Object.keys(pinArray).forEach(function(pin){
-      gpio.open(pin, "input", function(err) {
-        count++;
-        if (count >= maxNum){
-          logger.write("set emc pins as inputs");
-          callback(null);
-        }
-      });
-    });
-  }
+  });
+
+  async.series(funcArray, function(err, res){
+    setTimeout(function(){
+      callback(null);
+    }, 300);
+  });
 }
 
 run();
