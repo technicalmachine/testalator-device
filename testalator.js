@@ -40,7 +40,7 @@ var NXP_ROM_VID = 0x1fc9;
 var NXP_ROM_PID = 0x000c;
 
 var BOARD_V = 4;
-var CC_VER = "1.26";
+var CC_VER = "1.29";
 
 var tessel = null;
 
@@ -162,7 +162,7 @@ function setupLogger(next){
     pw = res.pw;
     auth = res.auth;
     exec('git rev-parse HEAD', function(err, git, stderr){
-      fs.readdir('bin', function(err, files){
+      fs.readdir(path.resolve(__dirname, 'bin'), function(err, files){
         logger = require('./logger.js').create(res.device, git, files);
         logger.clearDevice();
         next && next();
@@ -183,13 +183,13 @@ function run(){
       function (cb) { closeAll(cb) },
       function (cb) { setup(cb) },
       function (cb) { checkOTP(cb)},
-      // function (cb) { firmware(firmwarePath, cb) },
-      // function (cb) { ram(wifiPatchPath, 15000, cb)},
-      // function (cb) { getBoardInfo(cb) },
-      // function (cb) { wifiPatchCheck(cb) },
-      // function (cb) { jsCheck(jsPath, cb) },
-      // function (cb) { powerSwitch(powerPath, cb) },
-      // function (cb) { wifiTest(network, pw, auth, cb)}
+      function (cb) { firmware(firmwarePath, cb) },
+      function (cb) { ram(wifiPatchPath, 14000, cb)},
+      function (cb) { getBoardInfo(cb) },
+      function (cb) { wifiPatchCheck(cb) },
+      function (cb) { jsCheck(jsPath, cb) },
+      function (cb) { powerSwitch(powerPath, cb) },
+      function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
       
@@ -197,19 +197,17 @@ function run(){
         if (err){
           toggle(ledError, 1);
           logger.writeAll(logger.levels.error, "testalator", err);
-          // console.log("Error, ", err);
         } else {
-          // console.log("Success!", result);
           toggle(ledDone, 1);
           logger.writeAll("Success!");
         }
 
         setTimeout(function(){
-          // closeAll(function(){
+          closeAll(function(){
             process.exit();
-          // });
+          });
         }, 500);
-      }, 10000);
+      }, 5000);
     });
   }); 
 }
@@ -361,24 +359,25 @@ function checkOTP(callback){
         // if it is found otp
         if (!err) {
           needOTP = true;
-          console.log("this board should be otped");
+          logger.write("this board should be otped");
 
-          // dfu.runNXP(otpPath, function(err){
-          //   if (err) return callback(err);
-          //   emc(0, function(err){
-          //     setTimeout(function(){
-          //       usbCheck(TESSEL_VID, TESSEL_PID, function(err){
-          //         if (err) {
-          //           logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
-          //           // toggle(ledError, 1);
-          //           return callback(err);
-          //         }
-          //         logger.write("done with check OTP");
-          //         callback(null);
-          //       });
-          //     }, 1000);
-          //   });
-          // });
+          dfu.runNXP(otpPath, function(err){
+            if (err) return callback(err);
+            emc(0, function(err){
+              setTimeout(function(){
+                usbCheck(TESSEL_VID, TESSEL_PID, function(err){
+                  if (err) {
+                    logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
+                    // toggle(ledError, 1);
+                    return callback(err);
+                  } else {
+                    logger.write("done with check OTP");
+                    callback(null);
+                  }
+                });
+              }, 1000);
+            });
+          });
 
 
         } else {
@@ -559,8 +558,8 @@ function getBoardInfo(callback) {
       logger.newDevice({"serial":serial, "firmware": client.version.firmware_git, "runtime": client.version.runtime_git, "board":otp});
       
       // if this firmware isn't the same version as what we have from s3 then we have a big probleeeeem
-      if (firmwareGit.search(client.version.firmware_git) == -1){
-        return callback("The firmware version on this board did not match the firmware on s3");
+      if (firmwareGit != "" && firmwareGit.search(client.version.firmware_git) == -1){
+        return callback("The firmware version on this board did not match the firmware on s3: "+client.version.firmware_git+" "+firmwareGit);
       }
 
       if (Number(otp) == BOARD_V){
