@@ -211,22 +211,27 @@ function run(){
       function (cb) { wifiTest(network, pw, auth, cb)}
     ], function (err, result){
       logger.writeAll("Finished.");
-      
-      setTimeout(function(){
-        if (err){
-          toggle(ledError, 1);
-          logger.writeAll(logger.levels.error, "testalator", err);
-        } else {
-          toggle(ledDone, 1);
-          logger.writeAll("Success!");
-        }
+      // make sure Error and Done are off
+      toggle(ledError, 0, function(){
+        toggle(ledDone, 0, function(){
+          setTimeout(function(){
+            if (err){
+              toggle(ledError, 1);
+              logger.writeAll(logger.levels.error, "testalator", err);
+            } else {
+              toggle(ledDone, 1);
+              logger.writeAll("Success!");
+            }
 
-        setTimeout(function(){
-          // closeAll(function(){
-            process.exit();
-          // });
-        }, 500);
-      }, 5000);
+            setTimeout(function(){
+              closeAll(function(){
+                process.exit();
+              });
+            }, 500);
+          }, 5000);
+        });
+      });
+      
     });
   }); 
 }
@@ -389,14 +394,14 @@ function checkOTP(callback, tries){
                   usbCheck(TESSEL_VID, TESSEL_PID, function(err){
                     if (err) {
                       logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
-                      // toggle(ledError, 1);
+                      
                       return callback(err);
                     } else {
                       logger.write("done with check OTP");
                       callback(null);
                     }
                   });
-                }, 1000);
+                }, 500);
               });
             });
 
@@ -414,7 +419,6 @@ function checkOTP(callback, tries){
                 if (err) {
                   // otherwise it's an error
                   logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
-                  // toggle(ledError, 1);
                   
                   return callback(err);
                 }
@@ -518,7 +522,6 @@ function firmware(path, callback){
 
         if (err){
           logger.write(logger.levels.error, "firmware", err);
-          // toggle(ledError, 1);
           
           callback(err);
         } else {
@@ -616,7 +619,6 @@ function getBoardInfo(callback) {
       } else {
         logger.deviceUpdate("otp", false);
         logger.writeAll(logger.levels.error, "otpVersion", otp );
-        // toggle(ledError, 1);
 
         return callback("OTP is set as "+otp);
       }
@@ -624,7 +626,6 @@ function getBoardInfo(callback) {
       return callback(null);
     } else {
       console.log("could not get board info");
-      // toggle(ledError, 1);
       return callback(err);
     }
   });
@@ -728,7 +729,6 @@ function emc(enable, callback){
         if (enable){
             gpio.open(element, "output", function(err){
               gpio.write(element, pinArray[element], function(err) {
-                console.log("writing", element, pinArray[element]);
                 cb(null);
               });
             });
