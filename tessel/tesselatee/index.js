@@ -54,9 +54,11 @@ function pinTest(next){
       if (port == 'G') {
         max_gpios = 6;
       }
+
       for (var i = 1; i <= max_gpios; i++) {
         var pin = ports[port].gpio(i).input();
-        if (pin.read().value != 0){
+
+        if (pin.read() != 0){
           console.log("FAIL: pin ", pin.pin, " on port ", port, " is not low");
           resString = resString.concat("x");
           failing = failing + 1;

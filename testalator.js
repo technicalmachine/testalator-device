@@ -40,7 +40,7 @@ var NXP_ROM_VID = 0x1fc9;
 var NXP_ROM_PID = 0x000c;
 
 var BOARD_V = 4;
-var CC_VER = "1.29";
+var CC_VER = "1.26";
 
 var tessel = null;
 
@@ -59,7 +59,13 @@ var otpPath = path.resolve(__dirname, "bin/tessel-otp-v4.bin"),
   jsMD5Path = path.resolve(__dirname, "bin/tessel-js.md5"),
   jsUrl = "https://s3.amazonaws.com/testalator-firmware/tessel-js.tar",
   countMD5Path = path.resolve(__dirname, "bin/tessel-count.md5"),
-  countUrl = "https://s3.amazonaws.com/testalator-firmware/tessel-count.tar"
+  countUrl = "https://s3.amazonaws.com/testalator-firmware/tessel-count.tar",
+  otpMD5Path = path.resolve(__dirname, "bin/tessel-otp-v4.md5"),
+  otpUrl = "https://s3.amazonaws.com/testalator-firmware/tessel-otp.bin",
+  wifiUrl = "https://s3.amazonaws.com/testalator-firmware/wifi",
+  wifiSsid = "x-amz-meta-ssid",
+  wifiAuth = "x-amz-meta-auth",
+  wifiPw = "x-amz-meta-pw"
   ;
 
 var network = "",
@@ -118,7 +124,8 @@ function checkS3(url, resPath, resMD5Path, next){
  request.head(url, function(err, data){
     var currMd5 = fs.existsSync(resMD5Path) ? fs.readFileSync(resMD5Path, "utf-8").trim() : "";
     if (!err && data.headers && data.headers[s3MD5]) {
-      if (data.headers[s3Git]){
+      if (data.headers[s3Git] && url == s3Url){
+        // update our firmware git only if it's the firmware url
         firmwareGit = data.headers[s3Git];
       } else {
         logger.write(logger.levels.error, "s3", "cannot get s3 git version from "+url);
@@ -161,11 +168,22 @@ function setupLogger(next){
     network = res.ssid;
     pw = res.pw;
     auth = res.auth;
-    exec('git rev-parse HEAD', function(err, git, stderr){
-      fs.readdir(path.resolve(__dirname, 'bin'), function(err, files){
-        logger = require('./logger.js').create(res.device, git, files);
-        logger.clearDevice();
-        next && next();
+
+    // check wifi url 
+    request.head(wifiUrl, function(err, data){
+      if (!err && data.headers && data.headers[wifiSsid] && data.headers[wifiPw] && data.headers[wifiAuth]){
+        network = data.headers[wifiSsid];
+        pw = data.headers[wifiPw];
+        auth = data.headers[wifiAuth];
+        console.log("got new wifi auth credentials: ", network+"/"+pw, auth);
+      }
+
+      exec('git rev-parse HEAD', function(err, git, stderr){
+        fs.readdir(path.resolve(__dirname, 'bin'), function(err, files){
+          logger = require('./logger.js').create(res.device, git, files);
+          logger.clearDevice();
+          next && next();
+        });
       });
     });
   });
@@ -178,11 +196,12 @@ function run(){
     async.waterfall([
       function (cb) { checkS3(cc3kUrl, wifiPatchPath, cc3kMD5Path, cb)}, // cc3k patch
       function (cb) { checkS3(jsUrl, jsPath, jsMD5Path, cb)}, // js test
+      function (cb) { checkS3(otpUrl, otpPath, otpMD5Path, cb)}, // otp
       function (cb) { checkS3(countUrl, powerPath, countMD5Path, cb)}, // count test
       function (cb) { checkS3(s3Url, firmwarePath, firmwareMD5Path, cb)}, // firmware
       function (cb) { closeAll(cb) },
       function (cb) { setup(cb) },
-      function (cb) { checkOTP(cb)},
+      function (cb) { checkOTP(cb, 0)},
       function (cb) { firmware(firmwarePath, cb) },
       function (cb) { ram(wifiPatchPath, 14000, cb)},
       function (cb) { getBoardInfo(cb) },
@@ -203,9 +222,9 @@ function run(){
         }
 
         setTimeout(function(){
-          closeAll(function(){
+          // closeAll(function(){
             process.exit();
-          });
+          // });
         }, 500);
       }, 5000);
     });
@@ -283,7 +302,7 @@ function powerSwitch(powerPath, callback){
 }
 
 function wifiTest(ssid, pw, security, callback){
-  logger.writeAll("wifi test");
+  logger.writeAll("wifi test connecting to "+ssid+"/"+pw+" with "+security);
   var count = 0;
   var maxCount = 5;
   tessel.listen(true);
@@ -348,54 +367,66 @@ function ram(path, delayLength, callback){
   }, 200);
 }
 
-function checkOTP(callback){
+function checkOTP(callback, tries){
+  // , tries
+  var MAX_TRIES = 3;
   logger.write("starting check OTP");
-
+  tries++;
   emc(1, function(err) {
-    if (err) return callback(err);
-    rst(function(err){
-      if (err) return callback(err);
-      usbCheck(NXP_ROM_VID, NXP_ROM_PID, function(err){
-        // if it is found otp
-        if (!err) {
-          needOTP = true;
-          logger.write("this board should be otped");
+    setTimeout(function(){
+      rst(function(err){
+        if (err) return callback(err);
+        usbCheck(NXP_ROM_VID, NXP_ROM_PID, function(err){
+          // if it is found otp
+          if (!err) {
+            needOTP = true;
+            logger.write("this board should be otped");
 
-          dfu.runNXP(otpPath, function(err){
-            if (err) return callback(err);
-            emc(0, function(err){
-              setTimeout(function(){
-                usbCheck(TESSEL_VID, TESSEL_PID, function(err){
-                  if (err) {
-                    logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
-                    // toggle(ledError, 1);
-                    return callback(err);
-                  } else {
-                    logger.write("done with check OTP");
-                    callback(null);
-                  }
-                });
-              }, 1000);
+            dfu.runNXP(otpPath, function(err){
+              if (err) return callback(err);
+              emc(0, function(err){
+                setTimeout(function(){
+                  usbCheck(TESSEL_VID, TESSEL_PID, function(err){
+                    if (err) {
+                      logger.write(logger.levels.error, "checkOTP", "OTP'ed but cannot find tessel pid/vid");
+                      // toggle(ledError, 1);
+                      return callback(err);
+                    } else {
+                      logger.write("done with check OTP");
+                      callback(null);
+                    }
+                  });
+                }, 1000);
+              });
             });
-          });
 
 
-        } else {
-          // if it's not found check for other otp.
-          usbCheck(TESSEL_VID, TESSEL_PID, function(err){
-            if (err) {
-              // otherwise it's an error
-              logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
-              // toggle(ledError, 1);
-              
-              return callback(err);
+          } else {
+            // if it's below max tries, try again
+            if (tries < MAX_TRIES){
+              logger.write("failed on try", tries, "trying again");
+              return checkOTP(callback, tries);
             }
-            logger.write("already OTP'ed");
-            callback(null);
-          });
-        }
+
+            // if it's not found check for other otp.
+            emc(0, function(err){
+              usbCheck(TESSEL_VID, TESSEL_PID, function(err){
+                if (err) {
+                  // otherwise it's an error
+                  logger.write(logger.levels.error, "checkOTP", "cannot find either nxp pid/vid or tessel pid/vid");
+                  // toggle(ledError, 1);
+                  
+                  return callback(err);
+                }
+                logger.write("already OTP'ed");
+                callback(null);
+              });
+            });
+
+          }
+        });
       });
-    });
+    }, 500);
   });
 }
 
@@ -408,6 +439,7 @@ function jsCheck(jsPath, callback){
   // check for the script to finish
   tessel.listen(true);
   var turnOnLED = false;
+  var returned = false;
   tessel.on('log', function onLog (level, data) {
     if (!turnOnLED) {
       turnOnLED = true;
@@ -422,10 +454,13 @@ function jsCheck(jsPath, callback){
         logger.writeAll("jsTest passed");
         toggle(ledPins, 1);
         tessel.removeListener('log', onLog);
+        returned = true;
+
         return callback();
       } else if (data.jsTest && data.jsTest == 'failed'){
 
         logger.writeAll(logger.levels.error, data.jsTest, "failed");
+        returned = true;
         callback("Could not pass js test");
       } else {
         console.log("updating", Object.keys(data)[0], data[Object.keys(data)[0]]);
@@ -433,9 +468,21 @@ function jsCheck(jsPath, callback){
       }
     } else {
       // push data into logging
+      if (data.indexOf("Error parsing") != -1)
+      {
+        returned = true;
+        callback(data);
+      }
       logger.writeAll( data);
     }
   });
+  
+  // no response within 10s, its a fail
+  setTimeout(function(){
+    if (!returned){
+      callback("did not finish js test within 10 seconds");
+    }
+  }, 10000);
 }
 
 function wifiPatchCheck(callback){
@@ -672,7 +719,6 @@ function emc(enable, callback){
   pinArray[A7] = 0;
   pinArray[A8] = 1;
 
-  // console.log("pin array", pinArray);
   logger.write("setting up external memory controller pins");
 
   var funcArray = [];
@@ -682,6 +728,7 @@ function emc(enable, callback){
         if (enable){
             gpio.open(element, "output", function(err){
               gpio.write(element, pinArray[element], function(err) {
+                console.log("writing", element, pinArray[element]);
                 cb(null);
               });
             });
